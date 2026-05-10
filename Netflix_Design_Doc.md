@@ -94,32 +94,41 @@ Lecturas (catálogo + listas + historial):
   Pico (3x): ~105 QPS
 
 Escrituras (Mi Lista, progreso de reproducción, historial):
-  200,000 sesiones × 2 writes/sesión = 400,000 escrituras/día
-  400,000 / 86,400 = ~5 QPS
-  Pico: ~15 QPS
+  Pico de streams concurrentes: 10,000
+  Updates de progreso (cada 30s): 10,000 / 30 = 333 QPS
+  Otras escrituras (Mi Lista, login): ~15 QPS
+  Pico Total Escritura: ~350 QPS (Requiere escalado DynamoDB)
 
 ── Streaming (Video) ───────────────────────────────────────
 Streams concurrentes (pico):
   100,000 DAU × 10% concurrente = 10,000 streams simultáneos
 
 Ancho de banda de video:
-  10,000 streams × 5 Mbps (promedio 1080p) = 50 Gbps
+  10,000 streams × 5 Mbps (promedio 1080p/4K mix) = 50 Gbps
   Servido por CloudFront CDN (edge locations globales)
+
+Transferencia mensual de video (CloudFront):
+  Consumo promedio: 1 película/día × 90 min = 3.375 GB/usuario/día
+  100,000 DAU × 3.375 GB = 337.5 TB/día
+  337.5 TB × 30 = ~10.1 PB/mes
 
 ── Almacenamiento ──────────────────────────────────────────
 DynamoDB:
   10,000 películas × 2 KB = 20 MB (catálogo)
   100,000 usuarios × 50 películas × 100 bytes = 500 MB (listas)
   100,000 usuarios × 200 registros historial × 200 bytes = 4 GB (watch history)
-  Total DynamoDB: < 5 GB
+  Total DynamoDB: < 10 GB (incluyendo índices GSIs)
 
 S3 (Video):
-  10,000 títulos × 3 GB promedio (multi-calidad HLS) = 30 TB
-  Costo S3: ~$690/mes (Standard)
+  10,000 títulos × 12 GB promedio (multi-calidad HLS + 4K) = 120 TB
+  Costo S3: ~$2,760/mes (Standard @ $0.023/GB)
 
 Ancho de banda API (sin video):
-  105 QPS × 5 KB = 525 KB/s = ~45 GB/día
+  350 QPS (peak) × 5 KB = 1.75 MB/s = ~150 GB/día
 ```
+
+> [!NOTE]
+> El 90% del presupuesto se destina a la entrega de contenido (CDN). Esto es consistente con el modelo de costos de plataformas como Netflix, donde el "costo de servir el bit" es el gasto operativo principal.
 
 ---
 
@@ -677,16 +686,16 @@ Las decisiones técnicas principales se documentan en la sección **Temas de Dis
 **Estimación de costos mensuales (100K DAU):**
 
 ```
-Lambda:            105 QPS × 0.5s × 128MB = ~$25/mes
-  + Prov. Concurrency (5 instancias × 2 fns) = ~$35/mes
-DynamoDB:          35 RPS lectura + 15 RPS escritura (on-demand) = ~$20/mes
-API GW:            3M requests/mes = ~$10/mes
-S3 Video:          30 TB storage = ~$690/mes
-CloudFront:        ~150 TB transfer/mes (10K streams × 5Mbps × 8h avg) = ~$12,750/mes
-OpenSearch:        t3.small.search (1 instancia) = ~$36/mes
+Lambda:            350 QPS (peak) × 0.5s × 128MB = ~$85/mes
+  + Prov. Concurrency (10 instancias × 3 fns) = ~$105/mes
+DynamoDB:          105 RPS lectura + 350 RPS escritura (on-demand) = ~$140/mes
+API GW:            ~100M requests/mes (3M reads + 400K writes)/día × 30 = ~$100/mes
+S3 Video:          120 TB storage = ~$2,760/mes
+CloudFront:        ~10.1 PB transfer/mes (100K DAU × 90 min/día @ 5Mbps) = ~$202,500/mes
+OpenSearch:        t3.medium.search (1 instancia) = ~$72/mes
 MediaConvert:      10,000 títulos × $0.024/min × 90 min = ~$21,600 (one-time)
-Auth0:             Free tier (7,000 MAU) o $23/mes (Essential)
-Total estimado:    ~$13,590/mes (operación) + one-time transcoding
+Auth0:             Essential Plan = ~$23/mes
+Total estimado:    ~$205,785/mes (operación) + one-time transcoding
 ```
 
 ### 6.3 Métricas y Monitoreo
