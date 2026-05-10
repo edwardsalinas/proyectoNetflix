@@ -183,6 +183,7 @@ Ancho de banda API (sin video):
 
 ### Diagrama Entidad-Relación
 
+
 ```mermaid
 erDiagram
     User {
@@ -210,7 +211,7 @@ erDiagram
     }
 
     VideoAsset {
-        string movieId PK_FK
+        string movieId PK,FK
         enum quality PK
         string hlsPlaylistUrl
         long fileSizeBytes
@@ -219,15 +220,15 @@ erDiagram
     }
 
     UserList {
-        string userId PK_FK
-        string movieId PK_FK
+        string userId PK,FK
+        string movieId PK,FK
         timestamp addedAt
         string notes
     }
 
     WatchHistory {
-        string userId PK_FK
-        string movieId PK_FK
+        string userId PK,FK
+        string movieId PK,FK
         int progressSeconds
         boolean completed
         timestamp lastWatchedAt
