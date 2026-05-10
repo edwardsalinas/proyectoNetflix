@@ -57,7 +57,7 @@ El objetivo principal es ofrecer una experiencia de streaming fluida y de baja l
 
 1. **[P0] Reproducir contenido en streaming:** Los usuarios deben poder reproducir películas y series en streaming con calidad adaptativa (480p/720p/1080p/4K según su plan y ancho de banda), para consumir contenido de video bajo demanda desde cualquier dispositivo.
 
-2. **[P0] Explorar y buscar catálogo:** Los usuarios deben poder explorar el catálogo de películas y buscar por título, género, director o año de lanzamiento, para descubrir contenido relevante según sus preferencias.
+2. **[P0] Explorar y buscar catálogo:** Los usuarios deben poder explorar el catálogo de películas filtrando por género, director o año de lanzamiento, y realizar búsquedas de texto por título (búsqueda parcial, e.g., "El padr" → "El Padrino"), para descubrir contenido relevante. *Nota: la búsqueda por título requiere un índice de texto completo (OpenSearch) ya que los GSIs de DynamoDB solo soportan queries exactos.*
 
 3. **[P0] Continuar viendo y gestionar Mi Lista:** Los usuarios autenticados deben poder retomar la reproducción desde donde la dejaron ("Continuar Viendo"), y agregar/eliminar películas de su lista personal ("Mi Lista"), para una experiencia de consumo continua y personalizada.
 
@@ -269,8 +269,15 @@ erDiagram
 
 ```
 GET    /v1/movies                    → Lista películas (con filtros opcionales)
-       Query params: ?genero=, ?director=, ?anio=, ?titulo=, ?page=, ?limit=
+       Query params: ?genero=, ?director=, ?anio=, ?nextToken=, ?maxResults= (default 20, max 100)
+       Response: 200 OK { items: Movie[], nextToken?: string, totalCount?: number }
+       Nota: Usa paginación cursor-based con nextToken (no offset/page).
+
+GET    /v1/movies/search             → Búsqueda de texto por título [authenticated]
+       Query params: ?q=El+padr&maxResults=
        Response: 200 OK { items: Movie[], nextToken?: string }
+       Nota: Delegado a OpenSearch para búsqueda parcial/fuzzy.
+             DynamoDB Streams sincroniza el índice automáticamente.
 
 POST   /v1/movies                    → Crear película [content_admin+]
        Body: { titulo, sinopsis, genero, director, anio, duracion, posterUrl }
@@ -285,6 +292,21 @@ PUT    /v1/movies/{movieId}          → Actualizar película [content_admin+]
 
 DELETE /v1/movies/{movieId}          → Eliminar película [super_admin]
        Response: 204 No Content
+```
+
+### Endpoints de Géneros
+
+```
+GET    /v1/genres                    → Listar todos los géneros [authenticated]
+       Response: 200 OK { items: Genre[] }
+
+GET    /v1/genres/{genreId}          → Obtener género por ID [authenticated]
+       Response: 200 OK { genre: Genre }
+
+GET    /v1/genres/{genreId}/movies   → Listar películas por género [authenticated]
+       Query params: ?nextToken=, ?maxResults=
+       Response: 200 OK { items: Movie[], nextToken?: string }
+       Nota: Equivalente a GET /v1/movies?genero={genreId} pero semánticamente más claro.
 ```
 
 ### Endpoints de Streaming y Reproducción
@@ -305,18 +327,24 @@ DELETE /v1/streaming/sessions/{sessionId} → Terminar sesión de streaming
 
 ### Endpoints de Historial y Progreso ("Continuar Viendo")
 
+> Todos los endpoints de historial requieren autenticación (`Authorization: Bearer <token>`).
+> El `userId` en la URL se valida contra el claim `sub` del JWT — solo el propietario o un `super_admin` puede acceder.
+
 ```
-GET    /v1/users/{userId}/history     → Historial de reproducción [owner]
-       Query params: ?completed=false (para "Continuar Viendo")
+GET    /v1/users/{userId}/history     → Historial de reproducción [owner o super_admin]
+       Query params: ?completed=false (para "Continuar Viendo"), ?nextToken=, ?maxResults=
        Response: 200 OK { items: WatchHistoryEntry[] }
+       Auth: Requiere scope mylist:read. userId validado contra token.
 
 PUT    /v1/users/{userId}/history/{movieId} → Actualizar progreso [owner]
        Body: { progressSeconds, completed? }
        Response: 200 OK { entry: WatchHistoryEntry }
+       Auth: Requiere scope mylist:write. userId validado contra token.
        Nota: Se actualiza automáticamente durante la reproducción (cada 30s).
 
 DELETE /v1/users/{userId}/history/{movieId} → Eliminar del historial [owner]
        Response: 204 No Content
+       Auth: Requiere scope mylist:write. userId validado contra token.
 ```
 
 ### Endpoints de Mi Lista
@@ -503,9 +531,12 @@ flowchart TD
 
         subgraph Data["Persistencia"]
             DDB1[(DynamoDB - peliculas)]
+            DDB5[(DynamoDB - video_assets)]
+            DDB6[(DynamoDB - genres)]
             DDB2[(DynamoDB - user_lists)]
             DDB3[(DynamoDB - watch_history)]
             DDB4[(DynamoDB - stream_sessions)]
+            OS[(OpenSearch - búsqueda texto)]
         end
     end
 
@@ -521,10 +552,15 @@ flowchart TD
     APIGW --> L6 & L7 & L8 & L12 & L13
     APIGW --> L9 & L10 & L11
     L1 & L2 --> DDB1
+    L1 -.->|"búsqueda texto"| OS
     L3 --> DDB1
+    L3 --> DDB5
     L3 -.->|"trigger transcode"| MC
+    DDB1 -.->|"DynamoDB Streams"| OS
     MC --> S3VID
+    MC -.->|"callback"| DDB5
     L9 --> DDB1
+    L9 --> DDB5
     L9 --> DDB4
     L9 -.->|"generate signed URL"| CF
     L12 & L13 --> DDB3
@@ -570,6 +606,15 @@ Las decisiones técnicas principales se documentan en la sección **Temas de Dis
 | bitrateKbps | N | — | Bitrate del stream |
 | createdAt | S | — | ISO 8601 timestamp |
 
+#### Tabla: `genres` (DynamoDB)
+
+| Atributo | Tipo | Key | Descripción |
+|----------|------|-----|-------------|
+| genreId | S (String) | PK | Identificador del género (e.g., "accion", "drama") |
+| name | S | — | Nombre para mostrar (e.g., "Acción", "Drama") |
+| description | S | — | Descripción del género |
+| movieCount | N | — | Cantidad de películas en este género (counter) |
+
 #### Tabla: `user_lists` (DynamoDB)
 
 | Atributo | Tipo | Key | Descripción |
@@ -610,23 +655,26 @@ Las decisiones técnicas principales se documentan en la sección **Temas de Dis
 ### 6.2 Escalabilidad e Infraestructura
 
 - **DynamoDB on-demand**: Escala automáticamente según la demanda; sin necesidad de provisionar capacidad.
-- **Lambda**: Escala horizontalmente con concurrencia automática (hasta 1000 instancias concurrentes por defecto).
+- **Lambda**: Escala horizontalmente con concurrencia automática (hasta 1000 instancias concurrentes por defecto). **Provisioned Concurrency** habilitada para funciones críticas (ListMoviesFn, CreateStreamSessionFn) para eliminar cold starts y cumplir latencia p99 < 500ms.
 - **CloudFront**: CDN global con 400+ edge locations para entrega de video con baja latencia. URLs firmadas para protección de contenido.
 - **S3**: Almacenamiento de video con redundancia 11 9's. Lifecycle policies para mover contenido poco accedido a S3 Infrequent Access.
 - **MediaConvert**: Transcodificación serverless a múltiples calidades HLS. Se activa mediante evento S3 al subir video fuente.
+- **OpenSearch**: Índice de búsqueda de texto completo sincronizado via DynamoDB Streams para búsqueda parcial/fuzzy por título.
 - **API Gateway**: Throttling configurable (10,000 RPS por defecto), WAF para protección DDoS.
 
 **Estimación de costos mensuales (100K DAU):**
 
 ```
-Lambda:       105 QPS × 0.5s × 128MB = ~$25/mes
-DynamoDB:     35 RPS lectura + 15 RPS escritura (on-demand) = ~$20/mes
-API GW:       3M requests/mes = ~$10/mes
-S3 Video:     30 TB storage = ~$690/mes
-CloudFront:   50 Gbps pico × pricing por TB = ~$2,500/mes (video delivery)
-MediaConvert: 10,000 títulos × $0.024/min × 90 min = ~$21,600 (one-time)
-Auth0:        Free tier (7,000 MAU) o $23/mes (Essential)
-Total estimado: ~$3,270/mes (operación) + one-time transcoding
+Lambda:            105 QPS × 0.5s × 128MB = ~$25/mes
+  + Prov. Concurrency (5 instancias × 2 fns) = ~$35/mes
+DynamoDB:          35 RPS lectura + 15 RPS escritura (on-demand) = ~$20/mes
+API GW:            3M requests/mes = ~$10/mes
+S3 Video:          30 TB storage = ~$690/mes
+CloudFront:        ~150 TB transfer/mes (10K streams × 5Mbps × 8h avg) = ~$12,750/mes
+OpenSearch:        t3.small.search (1 instancia) = ~$36/mes
+MediaConvert:      10,000 títulos × $0.024/min × 90 min = ~$21,600 (one-time)
+Auth0:             Free tier (7,000 MAU) o $23/mes (Essential)
+Total estimado:    ~$13,590/mes (operación) + one-time transcoding
 ```
 
 ### 6.3 Métricas y Monitoreo
@@ -841,9 +889,10 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 - Sin gestión de contenedores
 
 **Contras:**
-- Cold starts (~200-500ms para Node.js)
+- Cold starts (~200-500ms para Node.js) — **mitigado con Provisioned Concurrency** en funciones críticas (ListMoviesFn, CreateStreamSessionFn), garantizando latencia p99 < 500ms
 - Límite de 15 minutos de ejecución
 - Límite de 250 MB para paquete de despliegue
+- Costo adicional de Provisioned Concurrency (~$35/mes para 10 instancias)
 
 #### Opción 2 — ECS Fargate
 
@@ -857,7 +906,7 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 - Requiere configuración de auto-scaling
 - Mayor complejidad operacional
 
-**Conclusión:** Lambda se selecciona por su modelo de pago por invocación, escala automática sin configuración, e integración nativa con el ecosistema serverless (API Gateway + DynamoDB). Los cold starts son aceptables dado que la latencia p99 objetivo es < 500ms.
+**Conclusión:** Lambda se selecciona por su modelo de pago por invocación, escala automática sin configuración, e integración nativa con el ecosistema serverless (API Gateway + DynamoDB). Los cold starts se mitigan con **Provisioned Concurrency** en funciones críticas de cara al usuario, garantizando que la latencia p99 se mantenga < 500ms.
 
 ---
 
