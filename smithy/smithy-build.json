@@ -1,0 +1,17 @@
+{
+    "version": "1.0",
+    "sources": ["model"],
+    "maven": {
+        "dependencies": [
+            "software.amazon.smithy:smithy-model:1.47.0",
+            "software.amazon.smithy:smithy-aws-traits:1.47.0",
+            "software.amazon.smithy:smithy-validation-model:1.47.0",
+            "software.amazon.smithy:smithy-linters:1.47.0"
+        ],
+        "repositories": [
+            {
+                "url": "https://repo.maven.apache.org/maven2/"
+            }
+        ]
+    }
+}
