@@ -26,7 +26,10 @@ service NetflixService {
     version: "2026-05-09"
     resources: [
         MovieResource
+        GenreResource
         UserListResource
+        WatchHistoryResource
+        StreamSessionResource
     ]
     errors: [
         ValidationError
@@ -68,8 +71,13 @@ string Synopsis
 @length(min: 1, max: 100)
 string DirectorName
 
-/// Género de la película
+/// Identificador del género (slug: e.g., "action", "drama")
+@pattern("^[a-z][a-z0-9_-]{0,49}$")
 @length(min: 1, max: 50)
+string GenreId
+
+/// Nombre para mostrar del género
+@length(min: 1, max: 100)
 string GenreName
 
 /// Año de lanzamiento
@@ -101,32 +109,55 @@ integer MaxResults
 @pattern("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$")
 string Timestamp
 
+/// Estado del video en el pipeline de transcodificación
+enum VideoStatus {
+    PENDING = "pending"
+    PROCESSING = "processing"
+    READY = "ready"
+    ERROR = "error"
+}
+
+/// Calidad de video disponible
+enum VideoQuality {
+    Q480P = "480p"
+    Q720P = "720p"
+    Q1080P = "1080p"
+    Q4K = "4K"
+}
+
+/// Identificador único de una sesión de streaming (UUID v4)
+@pattern("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+@length(min: 36, max: 36)
+string SessionId
+
 /// Estructura completa de una película
 structure Movie {
     @required
     movieId: MovieId
 
     @required
-    titulo: MovieTitle
+    title: MovieTitle
 
     @required
-    sinopsis: Synopsis
+    synopsis: Synopsis
 
     @required
-    genero: GenreName
+    genreId: GenreId
 
     @required
     director: DirectorName
 
     @required
-    anio: ReleaseYear
+    releaseYear: ReleaseYear
 
     @required
-    duracion: DurationMinutes
+    durationMinutes: DurationMinutes
 
     rating: Rating
 
     posterUrl: PosterUrl
+
+    videoStatus: VideoStatus
 
     @required
     createdAt: Timestamp
@@ -144,7 +175,6 @@ list MovieList {
 /// Requiere rol: content_admin o super_admin.
 /// Scope requerido: catalog:write
 @http(method: "POST", uri: "/v1/movies", code: 201)
-@idempotent
 operation CreateMovie {
     input: CreateMovieInput
     output: CreateMovieOutput
@@ -159,22 +189,22 @@ operation CreateMovie {
 @input
 structure CreateMovieInput {
     @required
-    titulo: MovieTitle
+    title: MovieTitle
 
     @required
-    sinopsis: Synopsis
+    synopsis: Synopsis
 
     @required
-    genero: GenreName
+    genreId: GenreId
 
     @required
     director: DirectorName
 
     @required
-    anio: ReleaseYear
+    releaseYear: ReleaseYear
 
     @required
-    duracion: DurationMinutes
+    durationMinutes: DurationMinutes
 
     rating: Rating
 
@@ -230,17 +260,17 @@ operation ListMovies {
 
 @input
 structure ListMoviesInput {
-    @httpQuery("genero")
-    genero: GenreName
+    @httpQuery("genre")
+    genre: GenreId
 
     @httpQuery("director")
     director: DirectorName
 
-    @httpQuery("anio")
-    anio: ReleaseYear
+    @httpQuery("year")
+    year: ReleaseYear
 
-    @httpQuery("titulo")
-    titulo: MovieTitle
+    @httpQuery("q")
+    q: MovieTitle
 
     @httpQuery("nextToken")
     nextToken: PaginationToken
@@ -279,12 +309,12 @@ structure UpdateMovieInput {
     @httpLabel
     movieId: MovieId
 
-    titulo: MovieTitle
-    sinopsis: Synopsis
-    genero: GenreName
+    title: MovieTitle
+    synopsis: Synopsis
+    genreId: GenreId
     director: DirectorName
-    anio: ReleaseYear
-    duracion: DurationMinutes
+    releaseYear: ReleaseYear
+    durationMinutes: DurationMinutes
     rating: Rating
     posterUrl: PosterUrl
 }
@@ -521,3 +551,379 @@ structure InternalServerError {
     @required
     message: String
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RECURSO: Genre (Géneros del catálogo)
+// ─────────────────────────────────────────────────────────────────────────────
+
+resource GenreResource {
+    identifiers: { genreId: GenreId }
+    read: GetGenre
+    list: ListGenres
+    operations: [ListMoviesByGenre]
+}
+
+/// Estructura de un género de contenido
+structure Genre {
+    @required
+    genreId: GenreId
+
+    @required
+    name: GenreName
+
+    description: String
+
+    movieCount: Integer
+}
+
+list GenreList {
+    member: Genre
+}
+
+/// Lista todos los géneros disponibles.
+/// Scope requerido: catalog:read
+@http(method: "GET", uri: "/v1/genres", code: 200)
+@readonly
+operation ListGenres {
+    input: ListGenresInput
+    output: ListGenresOutput
+    errors: [
+        UnauthorizedError
+    ]
+}
+
+@input
+structure ListGenresInput {}
+
+@output
+structure ListGenresOutput {
+    @required
+    items: GenreList
+}
+
+/// Obtiene un género por su ID.
+/// Scope requerido: catalog:read
+@http(method: "GET", uri: "/v1/genres/{genreId}", code: 200)
+@readonly
+operation GetGenre {
+    input: GetGenreInput
+    output: GetGenreOutput
+    errors: [
+        UnauthorizedError
+        NotFoundError
+    ]
+}
+
+@input
+structure GetGenreInput {
+    @required
+    @httpLabel
+    genreId: GenreId
+}
+
+@output
+structure GetGenreOutput {
+    @required
+    genre: Genre
+}
+
+/// Lista películas filtradas por género.
+/// Scope requerido: catalog:read
+@http(method: "GET", uri: "/v1/genres/{genreId}/movies", code: 200)
+@readonly
+@paginated
+operation ListMoviesByGenre {
+    input: ListMoviesByGenreInput
+    output: ListMoviesByGenreOutput
+    errors: [
+        UnauthorizedError
+        NotFoundError
+        ValidationError
+    ]
+}
+
+@input
+structure ListMoviesByGenreInput {
+    @required
+    @httpLabel
+    genreId: GenreId
+
+    @httpQuery("nextToken")
+    nextToken: PaginationToken
+
+    @httpQuery("maxResults")
+    maxResults: MaxResults
+}
+
+@output
+structure ListMoviesByGenreOutput {
+    @required
+    items: MovieList
+
+    nextToken: PaginationToken
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RECURSO: WatchHistory (Historial de reproducción)
+// ─────────────────────────────────────────────────────────────────────────────
+
+resource WatchHistoryResource {
+    identifiers: { userId: UserId }
+    operations: [
+        GetWatchHistory
+        UpdateWatchProgress
+        DeleteWatchHistory
+    ]
+}
+
+/// Entrada en el historial de visualización del usuario
+structure WatchHistoryEntry {
+    @required
+    userId: UserId
+
+    @required
+    movieId: MovieId
+
+    @required
+    progressSeconds: Integer
+
+    @required
+    completed: Boolean
+
+    @required
+    lastWatchedAt: Timestamp
+}
+
+list WatchHistoryEntries {
+    member: WatchHistoryEntry
+}
+
+/// Obtiene el historial de reproducción del usuario.
+/// El userId se valida contra el token JWT — solo el propietario o super_admin pueden acceder.
+/// Scope requerido: history:read
+@http(method: "GET", uri: "/v1/users/{userId}/history", code: 200)
+@readonly
+operation GetWatchHistory {
+    input: GetWatchHistoryInput
+    output: GetWatchHistoryOutput
+    errors: [
+        UnauthorizedError
+        ForbiddenError
+    ]
+}
+
+@input
+structure GetWatchHistoryInput {
+    @required
+    @httpLabel
+    userId: UserId
+
+    @httpQuery("completed")
+    completed: Boolean
+
+    @httpQuery("nextToken")
+    nextToken: PaginationToken
+
+    @httpQuery("maxResults")
+    maxResults: MaxResults
+}
+
+@output
+structure GetWatchHistoryOutput {
+    @required
+    items: WatchHistoryEntries
+
+    nextToken: PaginationToken
+}
+
+/// Actualiza el progreso de reproducción de una película.
+/// El userId debe coincidir con el claim 'sub' del JWT.
+/// Scope requerido: history:write
+@http(method: "PUT", uri: "/v1/users/{userId}/history/{movieId}", code: 200)
+@idempotent
+operation UpdateWatchProgress {
+    input: UpdateWatchProgressInput
+    output: UpdateWatchProgressOutput
+    errors: [
+        ValidationError
+        UnauthorizedError
+        ForbiddenError
+        NotFoundError
+    ]
+}
+
+@input
+structure UpdateWatchProgressInput {
+    @required
+    @httpLabel
+    userId: UserId
+
+    @required
+    @httpLabel
+    movieId: MovieId
+
+    @required
+    @range(min: 0, max: 86400)
+    progressSeconds: Integer
+
+    completed: Boolean
+}
+
+@output
+structure UpdateWatchProgressOutput {
+    @required
+    entry: WatchHistoryEntry
+}
+
+/// Elimina una entrada del historial de reproducción.
+/// Scope requerido: history:write
+@http(method: "DELETE", uri: "/v1/users/{userId}/history/{movieId}", code: 204)
+@idempotent
+operation DeleteWatchHistory {
+    input: DeleteWatchHistoryInput
+    output: DeleteWatchHistoryOutput
+    errors: [
+        UnauthorizedError
+        ForbiddenError
+        NotFoundError
+    ]
+}
+
+@input
+structure DeleteWatchHistoryInput {
+    @required
+    @httpLabel
+    userId: UserId
+
+    @required
+    @httpLabel
+    movieId: MovieId
+}
+
+@output
+structure DeleteWatchHistoryOutput {}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RECURSO: StreamSession (Sesiones de streaming)
+// ─────────────────────────────────────────────────────────────────────────────
+
+resource StreamSessionResource {
+    identifiers: { sessionId: SessionId }
+    create: CreateStreamSession
+    read: GetStreamSession
+    delete: DeleteStreamSession
+}
+
+/// Sesión activa de streaming con URL firmada de CloudFront
+structure StreamSession {
+    @required
+    sessionId: SessionId
+
+    @required
+    userId: UserId
+
+    @required
+    movieId: MovieId
+
+    @required
+    @length(min: 1, max: 2048)
+    signedUrl: String
+
+    @required
+    quality: VideoQuality
+
+    @required
+    expiresAt: Timestamp
+
+    @required
+    createdAt: Timestamp
+}
+
+/// Inicia una sesión de streaming generando una URL firmada de CloudFront.
+/// La calidad máxima depende del plan del usuario (maxQuality).
+/// Scope requerido: catalog:read
+@http(method: "POST", uri: "/v1/streaming/sessions", code: 201)
+operation CreateStreamSession {
+    input: CreateStreamSessionInput
+    output: CreateStreamSessionOutput
+    errors: [
+        ValidationError
+        UnauthorizedError
+        ForbiddenError
+        NotFoundError
+    ]
+}
+
+@input
+structure CreateStreamSessionInput {
+    @required
+    movieId: MovieId
+
+    preferredQuality: VideoQuality
+}
+
+@output
+structure CreateStreamSessionOutput {
+    @required
+    sessionId: SessionId
+
+    @required
+    signedUrl: String
+
+    @required
+    quality: VideoQuality
+
+    @required
+    expiresAt: Timestamp
+}
+
+/// Obtiene los detalles de una sesión de streaming activa.
+/// Scope requerido: catalog:read
+@http(method: "GET", uri: "/v1/streaming/sessions/{sessionId}", code: 200)
+@readonly
+operation GetStreamSession {
+    input: GetStreamSessionInput
+    output: GetStreamSessionOutput
+    errors: [
+        UnauthorizedError
+        ForbiddenError
+        NotFoundError
+    ]
+}
+
+@input
+structure GetStreamSessionInput {
+    @required
+    @httpLabel
+    sessionId: SessionId
+}
+
+@output
+structure GetStreamSessionOutput {
+    @required
+    session: StreamSession
+}
+
+/// Termina una sesión de streaming activa.
+/// Scope requerido: catalog:read
+@http(method: "DELETE", uri: "/v1/streaming/sessions/{sessionId}", code: 204)
+@idempotent
+operation DeleteStreamSession {
+    input: DeleteStreamSessionInput
+    output: DeleteStreamSessionOutput
+    errors: [
+        UnauthorizedError
+        ForbiddenError
+        NotFoundError
+    ]
+}
+
+@input
+structure DeleteStreamSessionInput {
+    @required
+    @httpLabel
+    sessionId: SessionId
+}
+
+@output
+structure DeleteStreamSessionOutput {}
