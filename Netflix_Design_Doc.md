@@ -63,7 +63,7 @@ El objetivo principal es ofrecer una experiencia de streaming fluida y de baja l
 
 4. **[P1] Administrar catálogo y contenido:** Los administradores de contenido deben poder crear, actualizar y eliminar películas del catálogo, incluyendo la carga de archivos de video que se transcodifican automáticamente a múltiples calidades para streaming.
 
-5. **[P2] Calificar y reseñar contenido:** Los usuarios deben poder asignar una calificación (1–5 estrellas) y escribir reseñas de las películas que han visto, para compartir su opinión y contribuir al rating promedio del catálogo.
+5. **[P2] Calificar y reseñar contenido:** Los usuarios deben poder asignar una calificación en una escala de 0.0 a 10.0 y escribir reseñas de las películas que han visto, para contribuir al rating promedio del catálogo
 
 6. **[P2] Recomendaciones personalizadas:** El sistema debe poder sugerir películas al usuario basándose en su historial de visualización, géneros favoritos y calificaciones previas, para facilitar el descubrimiento de contenido relevante.
 
@@ -143,18 +143,19 @@ Ancho de banda API (sin video):
 | | role | enum | `viewer`, `premium_viewer`, `content_admin`, `super_admin` |
 | | maxQuality | enum | `480p`, `720p`, `1080p`, `4K` — según plan |
 | | createdAt | ISO 8601 timestamp | Fecha de registro |
-| **Movie** | id | UUID (string) | Identificador único |
-| | titulo | string | Título de la película |
-| | sinopsis | string | Descripción del contenido |
-| | genero | string | Género principal |
+| **Movie** | movieId | UUID (string) | Identificador único |
+| | title | string | Título de la película |
+| | synopsis | string | Descripción del contenido |
+| | genreId | string | Género principal (FK → Genre) |
 | | director | string | Director |
-| | anio | integer | Año de lanzamiento |
-| | duracion | integer | Duración en minutos |
+| | releaseYear | integer | Año de lanzamiento |
+| | durationMinutes | integer | Duración en minutos |
 | | rating | float | Calificación promedio (0.0–10.0) |
 | | posterUrl | string (URL) | URL del poster (CloudFront) |
 | | trailerUrl | string (URL) | URL del trailer (CloudFront HLS) |
 | | videoStatus | enum | `pending`, `processing`, `ready`, `error` |
 | | createdAt | ISO 8601 timestamp | Fecha de creación del registro |
+| | updatedAt | ISO 8601 timestamp | Fecha de última actualización |
 | **VideoAsset** | movieId | UUID (string) | FK → Movie |
 | | quality | enum | `480p`, `720p`, `1080p`, `4K` |
 | | hlsPlaylistUrl | string (URL) | URL del manifest HLS (.m3u8) en S3 |
@@ -177,9 +178,10 @@ Ancho de banda API (sin video):
 | | quality | enum | Calidad seleccionada/máxima permitida |
 | | expiresAt | ISO 8601 timestamp | Expiración de la URL firmada |
 | | createdAt | ISO 8601 timestamp | Inicio de sesión de streaming |
-| **Genre** | genreId | string | Identificador del género |
-| | name | string | Nombre del género |
+| **Genre** | genreId | string | Identificador del género (slug, e.g., "action") |
+| | name | string | Nombre del género (e.g., "Action") |
 | | description | string | Descripción |
+| | movieCount | integer | Cantidad de películas en este género |
 
 ### Diagrama Entidad-Relación
 
@@ -196,18 +198,19 @@ erDiagram
     }
 
     Movie {
-        string id PK
-        string titulo
-        string sinopsis
-        string genero FK
+        string movieId PK
+        string title
+        string synopsis
+        string genreId FK
         string director
-        int anio
-        int duracion
+        int releaseYear
+        int durationMinutes
         float rating
         string posterUrl
         string trailerUrl
         enum videoStatus
         timestamp createdAt
+        timestamp updatedAt
     }
 
     VideoAsset {
@@ -241,6 +244,7 @@ erDiagram
         string signedUrl
         enum quality
         timestamp expiresAt
+        timestamp createdAt
     }
 
     Genre {
@@ -249,14 +253,14 @@ erDiagram
         string description
     }
 
-    User ||--o{ UserList : "tiene"
-    User ||--o{ WatchHistory : "registra"
-    User ||--o{ StreamSession : "inicia"
-    Movie ||--o{ VideoAsset : "tiene calidades"
-    Movie ||--o{ UserList : "aparece en"
-    Movie ||--o{ WatchHistory : "fue vista"
-    Movie ||--o{ StreamSession : "se reproduce"
-    Genre ||--o{ Movie : "clasifica"
+    User ||--o{ UserList : "has"
+    User ||--o{ WatchHistory : "records"
+    User ||--o{ StreamSession : "starts"
+    Movie ||--o{ VideoAsset : "has qualities"
+    Movie ||--o{ UserList : "appears in"
+    Movie ||--o{ WatchHistory : "was watched"
+    Movie ||--o{ StreamSession : "is streamed"
+    Genre ||--o{ Movie : "classifies"
 ```
 
 ---
@@ -269,7 +273,7 @@ erDiagram
 
 ```
 GET    /v1/movies                    → Lista películas (con filtros opcionales)
-       Query params: ?genero=, ?director=, ?anio=, ?nextToken=, ?maxResults= (default 20, max 100)
+       Query params: ?genre=, ?director=, ?year=, ?nextToken=, ?maxResults= (default 20, max 100)
        Response: 200 OK { items: Movie[], nextToken?: string, totalCount?: number }
        Nota: Usa paginación cursor-based con nextToken (no offset/page).
 
@@ -280,14 +284,14 @@ GET    /v1/movies/search             → Búsqueda de texto por título [authent
              DynamoDB Streams sincroniza el índice automáticamente.
 
 POST   /v1/movies                    → Crear película [content_admin+]
-       Body: { titulo, sinopsis, genero, director, anio, duracion, posterUrl }
+       Body: { title, synopsis, genreId, director, releaseYear, durationMinutes, posterUrl }
        Response: 201 Created { movie: Movie }
 
-GET    /v1/movies/{movieId}          → Obtener película por ID
+GET    /v1/movies/{movieId}          → Obtener película por ID [authenticated]
        Response: 200 OK { movie: Movie }
 
 PUT    /v1/movies/{movieId}          → Actualizar película [content_admin+]
-       Body: { titulo?, sinopsis?, genero?, director?, anio?, duracion?, posterUrl? }
+       Body: { title?, synopsis?, genreId?, director?, releaseYear?, durationMinutes?, posterUrl? }
        Response: 200 OK { movie: Movie }
 
 DELETE /v1/movies/{movieId}          → Eliminar película [super_admin]
@@ -306,7 +310,7 @@ GET    /v1/genres/{genreId}          → Obtener género por ID [authenticated]
 GET    /v1/genres/{genreId}/movies   → Listar películas por género [authenticated]
        Query params: ?nextToken=, ?maxResults=
        Response: 200 OK { items: Movie[], nextToken?: string }
-       Nota: Equivalente a GET /v1/movies?genero={genreId} pero semánticamente más claro.
+       Nota: Equivalente a GET /v1/movies?genre={genreId} pero semánticamente más claro.
 ```
 
 ### Endpoints de Streaming y Reproducción
@@ -318,10 +322,10 @@ POST   /v1/streaming/sessions        → Iniciar sesión de streaming [authentic
        Nota: Genera una URL firmada de CloudFront (4h TTL).
              La calidad máxima depende del plan del usuario (maxQuality).
 
-GET    /v1/streaming/sessions/{sessionId} → Obtener sesión activa
+GET    /v1/streaming/sessions/{sessionId} → Obtener sesión activa [authenticated]
        Response: 200 OK { session: StreamSession }
 
-DELETE /v1/streaming/sessions/{sessionId} → Terminar sesión de streaming
+DELETE /v1/streaming/sessions/{sessionId} → Terminar sesión de streaming [authenticated]
        Response: 204 No Content
 ```
 
@@ -334,17 +338,17 @@ DELETE /v1/streaming/sessions/{sessionId} → Terminar sesión de streaming
 GET    /v1/users/{userId}/history     → Historial de reproducción [owner o super_admin]
        Query params: ?completed=false (para "Continuar Viendo"), ?nextToken=, ?maxResults=
        Response: 200 OK { items: WatchHistoryEntry[] }
-       Auth: Requiere scope mylist:read. userId validado contra token.
+       Auth: Requiere scope history:read. userId validado contra token.
 
 PUT    /v1/users/{userId}/history/{movieId} → Actualizar progreso [owner]
        Body: { progressSeconds, completed? }
        Response: 200 OK { entry: WatchHistoryEntry }
-       Auth: Requiere scope mylist:write. userId validado contra token.
+       Auth: Requiere scope history:write. userId validado contra token.
        Nota: Se actualiza automáticamente durante la reproducción (cada 30s).
 
 DELETE /v1/users/{userId}/history/{movieId} → Eliminar del historial [owner]
        Response: 204 No Content
-       Auth: Requiere scope mylist:write. userId validado contra token.
+       Auth: Requiere scope history:write. userId validado contra token.
 ```
 
 ### Endpoints de Mi Lista
@@ -380,106 +384,106 @@ DELETE /v1/users/{userId}/lists/{movieId} → Eliminar de Mi Lista [owner]
 
 ```mermaid
 sequenceDiagram
-    actor Usuario
-    participant Cliente as Cliente Web
+    actor User
+    participant Client as Web Client
     participant APIGW as API Gateway
     participant Lambda as Lambda Function
     participant DDB as DynamoDB
 
-    Usuario->>Cliente: Buscar "Acción"
-    Cliente->>APIGW: GET /v1/movies?genero=Accion
-    APIGW->>APIGW: Validar token JWT (Authorization header)
-    APIGW->>Lambda: Invocar ListMoviesFn
-    Lambda->>DDB: Query genero-index (genero = "Accion")
+    User->>Client: Search "Action"
+    Client->>APIGW: GET /v1/movies?genre=Action
+    APIGW->>APIGW: Validate JWT (Authorization header)
+    APIGW->>Lambda: Invoke ListMoviesFn
+    Lambda->>DDB: Query genre-index (genre = "Action")
     DDB-->>Lambda: Items[]
     Lambda-->>APIGW: 200 OK { items: Movie[] }
-    APIGW-->>Cliente: JSON Response
-    Cliente-->>Usuario: Mostrar resultados
+    APIGW-->>Client: JSON Response
+    Client-->>User: Show results
 ```
 
 ### Flujo: Reproducir Película (Streaming)
 
 ```mermaid
 sequenceDiagram
-    actor Usuario
-    participant Cliente as Cliente Web (HLS.js Player)
+    actor User
+    participant Client as Web Client (HLS.js Player)
     participant APIGW as API Gateway
     participant Lambda as Lambda Function
     participant DDB as DynamoDB
     participant CF as CloudFront CDN
     participant S3 as S3 (Video HLS)
 
-    Usuario->>Cliente: Click "Reproducir"
-    Cliente->>APIGW: POST /v1/streaming/sessions (Bearer token)
-    APIGW->>Lambda: Invocar CreateStreamSessionFn
-    Lambda->>DDB: Verificar película existe y videoStatus=ready
-    Lambda->>DDB: Obtener maxQuality del usuario
-    Lambda->>Lambda: Generar CloudFront Signed URL (4h TTL)
+    User->>Client: Click "Play"
+    Client->>APIGW: POST /v1/streaming/sessions (Bearer token)
+    APIGW->>Lambda: Invoke CreateStreamSessionFn
+    Lambda->>DDB: Verify movie exists and videoStatus=ready
+    Lambda->>DDB: Get user maxQuality
+    Lambda->>Lambda: Generate CloudFront Signed URL (4h TTL)
     Lambda->>DDB: PutItem (StreamSession)
     Lambda-->>APIGW: 201 { signedUrl, quality, expiresAt }
-    APIGW-->>Cliente: StreamSession con URL firmada
-    Cliente->>CF: GET manifest.m3u8 (URL firmada)
+    APIGW-->>Client: StreamSession with signed URL
+    Client->>CF: GET manifest.m3u8 (signed URL)
     CF->>S3: Fetch HLS playlist
     S3-->>CF: .m3u8 manifest
-    CF-->>Cliente: HLS manifest (calidades disponibles)
-    loop Cada segmento de video
-        Cliente->>CF: GET segmento.ts (URL firmada)
-        CF-->>Cliente: Video segment (cached at edge)
+    CF-->>Client: HLS manifest (available qualities)
+    loop Each video segment
+        Client->>CF: GET segment.ts (signed URL)
+        CF-->>Client: Video segment (cached at edge)
     end
-    loop Cada 30 segundos
-        Cliente->>APIGW: PUT /v1/users/{userId}/history/{movieId}
-        APIGW->>Lambda: Actualizar progreso
+    loop Every 30 seconds
+        Client->>APIGW: PUT /v1/users/{userId}/history/{movieId}
+        APIGW->>Lambda: Update progress
         Lambda->>DDB: UpdateItem (progressSeconds)
     end
-    Usuario->>Cliente: Pausa / Cierra
-    Cliente->>APIGW: DELETE /v1/streaming/sessions/{sessionId}
+    User->>Client: Pause / Close
+    Client->>APIGW: DELETE /v1/streaming/sessions/{sessionId}
 ```
 
 ### Flujo: Agregar Película a Mi Lista
 
 ```mermaid
 sequenceDiagram
-    actor Usuario
-    participant Cliente as Cliente Web
+    actor User
+    participant Client as Web Client
     participant APIGW as API Gateway
     participant Lambda as Lambda Function
     participant DDB as DynamoDB
 
-    Usuario->>Cliente: Click "Agregar a Mi Lista"
-    Cliente->>APIGW: POST /v1/users/{userId}/lists (Bearer token)
-    APIGW->>APIGW: Validar JWT, extraer userId del token
-    APIGW->>Lambda: Invocar AddToListFn
-    Lambda->>DDB: GetItem (verificar que la película existe)
-    DDB-->>Lambda: Movie encontrada
+    User->>Client: Click "Add to My List"
+    Client->>APIGW: POST /v1/users/{userId}/lists (Bearer token)
+    APIGW->>APIGW: Validate JWT, extract userId from token
+    APIGW->>Lambda: Invoke AddToListFn
+    Lambda->>DDB: GetItem (verify movie exists)
+    DDB-->>Lambda: Movie found
     Lambda->>DDB: PutItem (UserList entry)
     DDB-->>Lambda: OK
     Lambda-->>APIGW: 201 Created
-    APIGW-->>Cliente: { entry: UserListEntry }
-    Cliente-->>Usuario: Confirmación visual
+    APIGW-->>Client: { entry: UserListEntry }
+    Client-->>User: Visual confirmation
 ```
 
 ### Flujo: Autenticación OIDC (Login)
 
 ```mermaid
 sequenceDiagram
-    actor Usuario
-    participant Cliente as Cliente Web/Móvil
+    actor User
+    participant Client as Web/Mobile Client
     participant Auth0 as Auth0 (Authorization Server)
     participant APIGW as API Gateway (Resource Server)
 
-    Usuario->>Cliente: Click "Iniciar Sesión"
-    Cliente->>Auth0: 1. Authorization Request (Authorization Code Flow + PKCE)
-    Note right of Cliente: GET /authorize?response_type=code&client_id=...&redirect_uri=...&scope=openid profile email&code_challenge=...
-    Auth0->>Usuario: 2. Pantalla de Login (Auth0 Universal Login)
-    Usuario->>Auth0: 3. Credenciales (email + password) o SSO (Google, GitHub)
-    Auth0-->>Cliente: 4. Authorization Code (redirect con ?code=...)
-    Cliente->>Auth0: 5. Token Request (POST /oauth/token)
-    Note right of Cliente: code + code_verifier + client_id + redirect_uri
-    Auth0-->>Cliente: 6. Tokens (ID Token + Access Token + Refresh Token)
-    Cliente->>Cliente: 7. Almacenar tokens de forma segura
-    Cliente->>APIGW: 8. API Request con Authorization: Bearer {access_token}
-    APIGW->>APIGW: 9. Validar JWT (firma, expiración, audience, issuer)
-    APIGW-->>Cliente: 10. Respuesta del recurso protegido
+    User->>Client: Click "Sign In"
+    Client->>Auth0: 1. Authorization Request (Authorization Code Flow + PKCE)
+    Note right of Client: GET /authorize?response_type=code&client_id=...&redirect_uri=...&scope=openid profile email&code_challenge=...
+    Auth0->>User: 2. Login Screen (Auth0 Universal Login)
+    User->>Auth0: 3. Credentials (email + password) or SSO (Google, GitHub)
+    Auth0-->>Client: 4. Authorization Code (redirect with ?code=...)
+    Client->>Auth0: 5. Token Request (POST /oauth/token)
+    Note right of Client: code + code_verifier + client_id + redirect_uri
+    Auth0-->>Client: 6. Tokens (ID Token + Access Token + Refresh Token)
+    Client->>Client: 7. Store tokens securely
+    Client->>APIGW: 8. API Request with Authorization: Bearer {access_token}
+    APIGW->>APIGW: 9. Validate JWT (signature, expiry, audience, issuer)
+    APIGW-->>Client: 10. Protected resource response
 ```
 
 ---
@@ -490,25 +494,30 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-    subgraph Clientes
-        WEB["Cliente Web - React/SPA + HLS.js Video Player"]
-        MOB[Cliente Móvil]
+    subgraph Clients
+        WEB["Web Client - React/SPA + HLS.js Video Player"]
+        MOB[Mobile Client]
     end
 
-    subgraph Auth["Autenticación (Auth0)"]
+    subgraph Auth["Authentication (Auth0)"]
         IDP[Auth0 IdP]
         JWKS[JWKS Endpoint]
     end
 
     subgraph AWS["AWS Cloud (us-east-1)"]
-        CF["CloudFront CDN (URLs Firmadas)"]
+        CF["CloudFront CDN (Signed URLs)"]
         S3WEB[S3 - Static Web Assets]
         S3VID["S3 - Video Storage (HLS segments)"]
         MC["AWS Elemental MediaConvert"]
         APIGW[API Gateway REST]
 
         subgraph Lambdas["Lambda Functions"]
-            subgraph CatalogFns["Catálogo"]
+            subgraph GenreFns["Genres"]
+                L14[ListGenresFn]
+                L15[GetGenreFn]
+                L16[ListMoviesByGenreFn]
+            end
+            subgraph CatalogFns["Catalog"]
                 L1[ListMoviesFn]
                 L2[GetMovieFn]
                 L3[CreateMovieFn]
@@ -520,23 +529,24 @@ flowchart TD
                 L10[GetStreamSessionFn]
                 L11[EndStreamSessionFn]
             end
-            subgraph UserFns["Usuario"]
+            subgraph UserFns["User"]
                 L6[GetUserListFn]
                 L7[AddToListFn]
                 L8[RemoveFromListFn]
                 L12[GetWatchHistoryFn]
                 L13[UpdateProgressFn]
+                L17[DeleteWatchHistoryFn]
             end
         end
 
-        subgraph Data["Persistencia"]
-            DDB1[(DynamoDB - peliculas)]
+        subgraph Data["Persistence"]
+            DDB1[(DynamoDB - movies)]
             DDB5[(DynamoDB - video_assets)]
             DDB6[(DynamoDB - genres)]
             DDB2[(DynamoDB - user_lists)]
             DDB3[(DynamoDB - watch_history)]
             DDB4[(DynamoDB - stream_sessions)]
-            OS[(OpenSearch - búsqueda texto)]
+            OS[(OpenSearch - text search)]
         end
     end
 
@@ -549,10 +559,12 @@ flowchart TD
     MOB --> IDP
     APIGW --> JWKS
     APIGW --> L1 & L2 & L3 & L4 & L5
-    APIGW --> L6 & L7 & L8 & L12 & L13
+    APIGW --> L6 & L7 & L8 & L12 & L13 & L17
     APIGW --> L9 & L10 & L11
+    APIGW --> L14 & L15 & L16
+    L14 & L15 & L16 --> DDB6
     L1 & L2 --> DDB1
-    L1 -.->|"búsqueda texto"| OS
+    L1 -.->|"text search"| OS
     L3 --> DDB1
     L3 --> DDB5
     L3 -.->|"trigger transcode"| MC
@@ -563,7 +575,7 @@ flowchart TD
     L9 --> DDB5
     L9 --> DDB4
     L9 -.->|"generate signed URL"| CF
-    L12 & L13 --> DDB3
+    L12 & L13 & L17 --> DDB3
     L6 & L7 & L8 --> DDB2
 ```
 
@@ -577,17 +589,17 @@ Las decisiones técnicas principales se documentan en la sección **Temas de Dis
 
 ### 6.1 Esquema de Base de Datos
 
-#### Tabla: `peliculas` (DynamoDB)
+#### Tabla: `movies` (DynamoDB)
 
 | Atributo | Tipo | Key | Descripción |
 |----------|------|-----|-------------|
-| id | S (String) | PK | UUID del título |
-| titulo | S | — | Título de la película |
-| sinopsis | S | — | Descripción |
-| genero | S | GSI-PK (genero-index) | Género principal |
+| movieId | S (String) | PK | UUID del título |
+| title | S | — | Título de la película |
+| synopsis | S | — | Descripción |
+| genreId | S | GSI-PK (genre-index) | Género principal |
 | director | S | GSI-PK (director-index) | Director |
-| anio | N (Number) | GSI-PK (anio-index) | Año de lanzamiento |
-| duracion | N | — | Duración en minutos |
+| releaseYear | N (Number) | GSI-PK (year-index) | Año de lanzamiento |
+| durationMinutes | N | — | Duración en minutos |
 | rating | N | — | Calificación (0.0–10.0) |
 | posterUrl | S | — | URL del poster (CloudFront) |
 | trailerUrl | S | — | URL del trailer HLS (CloudFront) |
@@ -599,7 +611,7 @@ Las decisiones técnicas principales se documentan en la sección **Temas de Dis
 
 | Atributo | Tipo | Key | Descripción |
 |----------|------|-----|-------------|
-| movieId | S (String) | PK | FK → peliculas.id |
+| movieId | S (String) | PK | FK → movies.id |
 | quality | S (String) | SK | `480p`, `720p`, `1080p`, `4K` |
 | hlsPlaylistUrl | S | — | URL del manifest HLS (.m3u8) en S3 |
 | fileSizeBytes | N | — | Tamaño del archivo |
@@ -727,8 +739,8 @@ Total estimado:    ~$13,590/mes (operación) + one-time transcoding
   "aud": "https://api.netflix-clone.com",
   "exp": 1716938100,
   "iat": 1716937200,
-  "scope": "openid profile email catalog:read mylist:read mylist:write",
-  "permissions": ["catalog:read", "mylist:read", "mylist:write"],
+  "scope": "openid profile email catalog:read mylist:read mylist:write history:read history:write",
+  "permissions": ["catalog:read", "mylist:read", "mylist:write", "history:read", "history:write"],
   "https://netflix-clone.com/roles": ["viewer"]
 }
 ```
@@ -760,7 +772,11 @@ Total estimado:    ~$13,590/mes (operación) + one-time transcoding
 | Ver Mi Lista (propia) | `mylist:read` | ✅ | ✅ | ✅ | ✅ |
 | Agregar a Mi Lista | `mylist:write` | ✅ | ✅ | ✅ | ✅ |
 | Eliminar de Mi Lista | `mylist:write` | ✅ | ✅ | ✅ | ✅ |
+| Ver historial propio | `history:read` | ✅ | ✅ | ✅ | ✅ |
+| Actualizar progreso | `history:write` | ✅ | ✅ | ✅ | ✅ |
+| Eliminar del historial | `history:write` | ✅ | ✅ | ✅ | ✅ |
 | Ver lista de otro usuario | `admin:read` | ❌ | ❌ | ❌ | ✅ |
+| Ver historial de otro usuario | `admin:read` | ❌ | ❌ | ❌ | ✅ |
 
 **Scopes OAuth 2.0:**
 
@@ -769,12 +785,14 @@ Total estimado:    ~$13,590/mes (operación) + one-time transcoding
 | `openid` | Identificación OIDC estándar | — |
 | `profile` | Datos de perfil | — |
 | `email` | Email del usuario | — |
-| `catalog:read` | Lectura del catálogo | `GET /v1/movies`, `GET /v1/movies/{id}` |
-| `catalog:write` | Escritura del catálogo | `POST /v1/movies`, `PUT /v1/movies/{id}` |
-| `catalog:delete` | Eliminación del catálogo | `DELETE /v1/movies/{id}` |
+| `catalog:read` | Lectura del catálogo | `GET /v1/movies`, `GET /v1/movies/{movieId}`, `GET /v1/movies/search`, `GET /v1/genres`, `GET /v1/genres/{genreId}`, `GET /v1/genres/{genreId}/movies`, `POST /v1/streaming/sessions`, `GET /v1/streaming/sessions/{sessionId}`, `DELETE /v1/streaming/sessions/{sessionId}` |
+| `catalog:write` | Escritura del catálogo | `POST /v1/movies`, `PUT /v1/movies/{movieId}` |
+| `catalog:delete` | Eliminación del catálogo | `DELETE /v1/movies/{movieId}` |
 | `mylist:read` | Lectura de Mi Lista | `GET /v1/users/{userId}/lists` |
 | `mylist:write` | Escritura de Mi Lista | `POST /v1/users/{userId}/lists`, `DELETE .../lists/{movieId}` |
-| `admin:read` | Lectura administrativa | `GET /v1/users/{userId}/lists` (otro usuario) |
+| `history:read` | Lectura del historial | `GET /v1/users/{userId}/history` |
+| `history:write` | Escritura del historial | `PUT /v1/users/{userId}/history/{movieId}`, `DELETE .../history/{movieId}` |
+| `admin:read` | Lectura administrativa | `GET /v1/users/{userId}/lists` (otro usuario), `GET /v1/users/{userId}/history` (otro usuario) |
 
 #### 6.4.3 Integración SSO y Seguridad de Tokens (B3)
 
@@ -792,6 +810,8 @@ Total estimado:    ~$13,590/mes (operación) + one-time transcoding
 | **Decisión** | **✅ Seleccionado** | Viable pero vendor lock-in | Requiere infraestructura |
 
 Auth0 fue seleccionado por su facilidad de integración, soporte nativo de OIDC/OAuth2, y la capacidad de agregar Social Login (Google, GitHub) sin configuración adicional.
+
+> ⚠️ **Nota de escala:** El free tier de Auth0 soporta hasta 7,000 MAU. Con 100,000 DAU el sistema requerirá el plan **Essential** (~$23/mes) o superior en producción.
 
 **Configuración de Tokens:**
 
