@@ -63,7 +63,7 @@ El objetivo principal es ofrecer una experiencia de streaming fluida y de baja l
 
 4. **[P1] Administrar catálogo y contenido:** Los administradores de contenido deben poder crear, actualizar y eliminar películas del catálogo, incluyendo la carga de archivos de video que se transcodifican automáticamente a múltiples calidades para streaming.
 
-5. **[P2] Calificar y reseñar contenido:** Los usuarios deben poder asignar una calificación (1–5 estrellas) y escribir reseñas de las películas que han visto, para compartir su opinión y contribuir al rating promedio del catálogo.
+5. **[P2] Calificar y reseñar contenido:** Los usuarios deben poder asignar una calificación en una escala de 0.0 a 10.0 y escribir reseñas de las películas que han visto, para contribuir al rating promedio del catálogo
 
 6. **[P2] Recomendaciones personalizadas:** El sistema debe poder sugerir películas al usuario basándose en su historial de visualización, géneros favoritos y calificaciones previas, para facilitar el descubrimiento de contenido relevante.
 
@@ -144,12 +144,12 @@ Ancho de banda API (sin video):
 | | maxQuality | enum | `480p`, `720p`, `1080p`, `4K` — según plan |
 | | createdAt | ISO 8601 timestamp | Fecha de registro |
 | **Movie** | id | UUID (string) | Identificador único |
-| | titulo | string | Título de la película |
-| | sinopsis | string | Descripción del contenido |
-| | genero | string | Género principal |
+| | title | string | Título de la película |
+| | synopsis | string | Descripción del contenido |
+| | genreId | string | Género principal |
 | | director | string | Director |
-| | anio | integer | Año de lanzamiento |
-| | duracion | integer | Duración en minutos |
+| | releaseYear | integer | Año de lanzamiento |
+| | durationMinutes | integer | Duración en minutos |
 | | rating | float | Calificación promedio (0.0–10.0) |
 | | posterUrl | string (URL) | URL del poster (CloudFront) |
 | | trailerUrl | string (URL) | URL del trailer (CloudFront HLS) |
@@ -197,12 +197,12 @@ erDiagram
 
     Movie {
         string id PK
-        string titulo
-        string sinopsis
-        string genero FK
+        string title
+        string synopsis
+        string genreId FK
         string director
-        int anio
-        int duracion
+        int releaseYear
+        int durationMinutes
         float rating
         string posterUrl
         string trailerUrl
@@ -577,17 +577,17 @@ Las decisiones técnicas principales se documentan en la sección **Temas de Dis
 
 ### 6.1 Esquema de Base de Datos
 
-#### Tabla: `peliculas` (DynamoDB)
+#### Tabla: `movies` (DynamoDB)
 
 | Atributo | Tipo | Key | Descripción |
 |----------|------|-----|-------------|
 | id | S (String) | PK | UUID del título |
-| titulo | S | — | Título de la película |
-| sinopsis | S | — | Descripción |
-| genero | S | GSI-PK (genero-index) | Género principal |
+| title | S | — | Título de la película |
+| synopsis | S | — | Descripción |
+| genreId | S | GSI-PK (genero-index) | Género principal |
 | director | S | GSI-PK (director-index) | Director |
-| anio | N (Number) | GSI-PK (anio-index) | Año de lanzamiento |
-| duracion | N | — | Duración en minutos |
+| releaseYear | N (Number) | GSI-PK (anio-index) | Año de lanzamiento |
+| durationMinutes | N | — | Duración en minutos |
 | rating | N | — | Calificación (0.0–10.0) |
 | posterUrl | S | — | URL del poster (CloudFront) |
 | trailerUrl | S | — | URL del trailer HLS (CloudFront) |
@@ -599,7 +599,7 @@ Las decisiones técnicas principales se documentan en la sección **Temas de Dis
 
 | Atributo | Tipo | Key | Descripción |
 |----------|------|-----|-------------|
-| movieId | S (String) | PK | FK → peliculas.id |
+| movieId | S (String) | PK | FK → movies.id |
 | quality | S (String) | SK | `480p`, `720p`, `1080p`, `4K` |
 | hlsPlaylistUrl | S | — | URL del manifest HLS (.m3u8) en S3 |
 | fileSizeBytes | N | — | Tamaño del archivo |
