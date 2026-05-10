@@ -63,6 +63,12 @@ El objetivo principal es ofrecer una experiencia de streaming fluida y de baja l
 
 4. **[P1] Administrar catálogo y contenido:** Los administradores de contenido deben poder crear, actualizar y eliminar películas del catálogo, incluyendo la carga de archivos de video que se transcodifican automáticamente a múltiples calidades para streaming.
 
+5. **[P2] Calificar y reseñar contenido:** Los usuarios deben poder asignar una calificación (1–5 estrellas) y escribir reseñas de las películas que han visto, para compartir su opinión y contribuir al rating promedio del catálogo.
+
+6. **[P2] Recomendaciones personalizadas:** El sistema debe poder sugerir películas al usuario basándose en su historial de visualización, géneros favoritos y calificaciones previas, para facilitar el descubrimiento de contenido relevante.
+
+7. **[P2] Perfiles múltiples por cuenta:** Los usuarios deben poder crear hasta 5 perfiles dentro de una misma cuenta (e.g., familiar, infantil), cada uno con su propio historial, Mi Lista y preferencias de contenido independientes.
+
 ### 1.2 Requerimientos No Funcionales
 
 1. **Disponibilidad (CAP):** El sistema debe priorizar disponibilidad sobre consistencia fuerte (AP), garantizando un uptime de **99.9%** (≤ 8.76 horas de downtime/año). Justificación: un usuario que ve datos ligeramente desactualizados es preferible a un sistema caído.
@@ -856,6 +862,9 @@ Authorization: Bearer eyJhbGciOiJSUzI1NiIs...
 
 ## Contactos
 
-- **Líder Técnico / Autor:** Edward Salinas
-- **Equipo:** Richard Berna, Jorge Siles, Estiven Salinas
+- **Integrantes del Equipo:**
+  - Edward Salinas
+  - Richard Berna
+  - Jorge Siles
+  - Estiven Salinas
 - **Curso:** Diseño e Implementación de Sistemas — Maestría en Cloud Computing
