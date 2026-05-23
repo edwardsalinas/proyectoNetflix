@@ -12,7 +12,15 @@ export const handler = async (event: any) => {
     requireScope(event, "catalog:write");
     requireRole(event, ["content_admin", "super_admin"]);
 
-    const body = event.body ? JSON.parse(event.body) : {};
+    let body;
+    try {
+      // Handle both string and object body (API Gateway may pass already parsed)
+      body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body || {};
+    } catch (parseError) {
+      console.error("Failed to parse body:", event.body);
+      throw new Error("Invalid JSON in request body");
+    }
+    
     const { title, synopsis, genreId, director, releaseYear, durationMinutes, posterUrl } = body;
 
     if (!title || !synopsis || !genreId || !director || !releaseYear || !durationMinutes) {

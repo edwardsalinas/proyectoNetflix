@@ -1,5 +1,5 @@
-const API_URL = "https://kozso8oqh9.execute-api.us-east-1.amazonaws.com/prod";
-const BUCKET_RAW = "proyectonetflixinfrastack-rawvideosbucketae61e2e4-rpyubfvpzjdv";
+const API_URL = "https://x7t0h8rdwl.execute-api.us-east-1.amazonaws.com/prod";
+const BUCKET_RAW = "proyectonetflixinfrastack-rawvideosbucketae61e2e4-zcl2bfyqdmps";
 const { execSync } = require("child_process");
 const fs = require("fs");
 

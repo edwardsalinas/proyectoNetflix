@@ -13,7 +13,14 @@ export const handler = async (event: any) => {
     requireScope(event, "catalog:read");
     const auth = getAuthContext(event);
 
-    const body = event.body ? JSON.parse(event.body) : {};
+    let body;
+    try {
+      body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body || {};
+    } catch (parseError) {
+      console.error("Failed to parse body:", event.body);
+      throw new Error("Invalid JSON in request body");
+    }
+    
     const { movieId, preferredQuality } = body;
     if (!movieId) {
       throw new Error("Validation: Missing movieId in request body");
