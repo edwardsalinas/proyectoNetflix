@@ -57,7 +57,7 @@ export const handler = async (event: any) => {
             Item: {
               movieId,
               quality,
-              hlsPlaylistUrl: `https://${bucketTranscoded}.s3.amazonaws.com/movies/${movieId}/playlist.m3u8`,
+              hlsPlaylistUrl: `https://${bucketTranscoded}.s3.amazonaws.com/movies/${movieId}/output_${quality}.m3u8`,
               fileSizeBytes: 104857600, // 100MB
               bitrateKbps: quality === "1080p" ? 5000 : quality === "720p" ? 2500 : 1000,
               createdAt: new Date().toISOString(),

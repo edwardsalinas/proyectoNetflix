@@ -37,10 +37,27 @@ export const handler = async (event: any) => {
     // 2. Determine video quality
     const quality = preferredQuality || "1080p";
 
-    // 3. Generate mock CloudFront Signed URL (4h TTL)
+    // 3. Retrieve actual HLS playlist URL from DynamoDB video_assets if registered
+    let playlistUrl = "";
+    try {
+      const assetResult = await ddbDocClient.send(
+        new GetCommand({
+          TableName: process.env.TABLE_VIDEO_ASSETS,
+          Key: { movieId, quality },
+        })
+      );
+      if (assetResult.Item && assetResult.Item.hlsPlaylistUrl) {
+        playlistUrl = assetResult.Item.hlsPlaylistUrl;
+      }
+    } catch (dbErr) {
+      console.warn("Failed to retrieve asset from video_assets table:", dbErr);
+    }
+
     const now = new Date();
     const expiresDate = new Date(now.getTime() + 4 * 60 * 60 * 1000); // 4 hours TTL
-    const signedUrl = `https://cdn.netflix-clone.com/movies/${movieId}/${quality}/playlist.m3u8?Expires=${Math.floor(expiresDate.getTime() / 1000)}&Signature=mock_sig_${randomUUID()}&Key-Pair-Id=K123456789`;
+
+    // Fallback to mock CDN URL if no asset is registered in DynamoDB
+    const signedUrl = playlistUrl || `https://cdn.netflix-clone.com/movies/${movieId}/${quality}/playlist.m3u8?Expires=${Math.floor(expiresDate.getTime() / 1000)}&Signature=mock_sig_${randomUUID()}&Key-Pair-Id=K123456789`;
 
     const sessionId = randomUUID();
 
