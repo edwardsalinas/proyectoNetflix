@@ -118,7 +118,7 @@ export const handler = async (event: any) => {
                         Codec: "H_264",
                         H264Settings: {
                           Bitrate: 5000000,
-                          RateControlMode: "QVBR",
+                          RateControlMode: "CBR",
                           SceneChangeDetect: "ENABLED",
                         },
                       },
@@ -148,7 +148,7 @@ export const handler = async (event: any) => {
                         Codec: "H_264",
                         H264Settings: {
                           Bitrate: 2500000,
-                          RateControlMode: "QVBR",
+                          RateControlMode: "CBR",
                           SceneChangeDetect: "ENABLED",
                         },
                       },
