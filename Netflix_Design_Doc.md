@@ -516,7 +516,8 @@ flowchart TD
     subgraph AWS["AWS Cloud (us-east-1)"]
         CF["CloudFront CDN (Signed URLs)"]
         S3WEB[S3 - Static Web Assets]
-        S3VID["S3 - Video Storage (HLS segments)"]
+        S3RAW["S3 - Raw Videos (Input Bucket)"]
+        S3VID["S3 - Transcoded Videos (Output Bucket)"]
         MC["AWS Elemental MediaConvert"]
         APIGW[API Gateway REST]
 
@@ -537,6 +538,8 @@ flowchart TD
                 L9[CreateStreamSessionFn]
                 L10[GetStreamSessionFn]
                 L11[EndStreamSessionFn]
+                L18[TriggerTranscodeFn]
+                L19[TranscodeCallbackFn]
             end
             subgraph UserFns["User"]
                 L6[GetUserListFn]
@@ -576,10 +579,13 @@ flowchart TD
     L1 -.->|"text search"| OS
     L3 --> DDB1
     L3 --> DDB5
-    L3 -.->|"trigger transcode"| MC
+    S3RAW -.->|"s3:ObjectCreated trigger"| L18
+    L18 -.->|"trigger transcode"| MC
     DDB1 -.->|"DynamoDB Streams"| OS
     MC --> S3VID
-    MC -.->|"callback"| DDB5
+    MC -.->|"EventBridge status change"| L19
+    L19 --> DDB1
+    L19 --> DDB5
     L9 --> DDB1
     L9 --> DDB5
     L9 --> DDB4
@@ -678,7 +684,10 @@ Las decisiones técnicas principales se documentan en la sección **Temas de Dis
 - **DynamoDB on-demand**: Escala automáticamente según la demanda; sin necesidad de provisionar capacidad.
 - **Lambda**: Escala horizontalmente con concurrencia automática (hasta 1000 instancias concurrentes por defecto). **Provisioned Concurrency** habilitada para funciones críticas (ListMoviesFn, CreateStreamSessionFn) para eliminar cold starts y cumplir latencia p99 < 500ms.
 - **CloudFront**: CDN global con 400+ edge locations para entrega de video con baja latencia. URLs firmadas para protección de contenido.
-- **S3**: Almacenamiento de video con redundancia 11 9's. Lifecycle policies para mover contenido poco accedido a S3 Infrequent Access.
+- **S3**: Almacenamiento de video con redundancia 11 9's, implementado mediante dos buckets independientes:
+  - **Bucket de Entrada (`raw-videos`)**: Recibe los archivos de video originales subidos por el administrador (referenciado mediante la variable de entorno `BUCKET_RAW_VIDEOS`).
+  - **Bucket de Salida (`transcoded-videos`)**: Almacena las playlists y segmentos HLS transcodificados listos para distribución (referenciado mediante la variable de entorno `BUCKET_TRANSCODED_VIDEOS`).
+  - Se utilizan Lifecycle policies para mover contenido poco accedido a S3 Infrequent Access.
 - **MediaConvert**: Transcodificación serverless a múltiples calidades HLS. Se activa mediante evento S3 al subir video fuente.
 - **OpenSearch**: Índice de búsqueda de texto completo sincronizado via DynamoDB Streams para búsqueda parcial/fuzzy por título.
 - **API Gateway**: Throttling configurable (10,000 RPS por defecto), WAF para protección DDoS.
