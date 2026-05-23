@@ -1,5 +1,5 @@
-const API_URL = "https://x7t0h8rdwl.execute-api.us-east-1.amazonaws.com/prod";
-const BUCKET_RAW = "proyectonetflixinfrastack-rawvideosbucketae61e2e4-zcl2bfyqdmps";
+const API_URL = "https://kozso8oqh9.execute-api.us-east-1.amazonaws.com/prod";
+const BUCKET_RAW = "proyectonetflixinfrastack-rawvideosbucketae61e2e4-rpyubfvpzjdv";
 const { execSync } = require("child_process");
 const fs = require("fs");
 
@@ -11,10 +11,10 @@ function generateTestToken(userId, scopes = [], roles = []) {
     "https://netflix-clone.com/roles": roles,
     roles: roles
   };
-  
+
   const base64Header = Buffer.from(JSON.stringify(header)).toString("base64").replace(/=/g, "");
   const base64Payload = Buffer.from(JSON.stringify(payload)).toString("base64").replace(/=/g, "");
-  
+
   return `Bearer ${base64Header}.${base64Payload}.signature`;
 }
 
@@ -49,12 +49,12 @@ async function runE2E() {
         durationMinutes: 12
       })
     });
-    
+
     if (createRes.status !== 201) {
       const errText = await createRes.text();
       throw new Error(`Failed to create movie: ${createRes.status} - ${errText}`);
     }
-    
+
     const createData = await createRes.json();
     const movieId = createData.movie.movieId;
     console.log(`✅ Movie created! ID: ${movieId} | Title: "${createData.movie.title}" | Status: ${createData.movie.videoStatus}\n`);
@@ -70,7 +70,7 @@ async function runE2E() {
     // 3. Upload to S3 Raw videos bucket
     const s3Key = `movies/${movieId}/video.mp4`;
     console.log(`Step 3: Uploading MP4 file to S3: s3://${BUCKET_RAW}/${s3Key}...`);
-    
+
     const uploadCmd = `aws s3 cp ${dummyFilePath} s3://${BUCKET_RAW}/${s3Key}`;
     console.log(`Running: ${uploadCmd}`);
     execSync(uploadCmd, { stdio: "inherit" });
@@ -85,12 +85,12 @@ async function runE2E() {
     while (videoStatus !== "ready" && attempts < maxAttempts) {
       attempts++;
       console.log(`Checking movie status (Attempt ${attempts}/${maxAttempts})...`);
-      
+
       const getRes = await fetch(`${API_URL}/v1/movies/${movieId}`, {
         method: "GET",
         headers
       });
-      
+
       if (getRes.status === 200) {
         const getData = await getRes.json();
         videoStatus = getData.movie.videoStatus;
@@ -128,8 +128,22 @@ async function runE2E() {
     const streamData = await streamRes.json();
     console.log("✅ Streaming session created successfully!");
     console.log(JSON.stringify(streamData, null, 2));
-    
+
+    // Generate a presigned URL of the raw video in S3 to verify the upload worked
+    let rawVideoPresignedUrl = "Could not generate";
+    try {
+      const presignCmd = `aws s3 presign s3://${BUCKET_RAW}/${s3Key} --expires-in 3600`;
+      rawVideoPresignedUrl = execSync(presignCmd).toString().trim();
+    } catch (presignErr) {
+      console.warn("Could not generate presigned URL for raw video:", presignErr.message);
+    }
+
     console.log("\n🎉 END-TO-END VOD INGESTION & PLAYBACK TESTS PASSED SUCCESSFULLY!");
+    
+    console.log("\n👉 VERIFY YOUR UPLOADED VIDEO IN S3:");
+    console.log(`You can download/play the exact video you uploaded here (valid for 1 hour):`);
+    console.log(rawVideoPresignedUrl);
+
     console.log("\n👉 COPY the following signed URL to test playback in any HLS player:");
     console.log(streamData.signedUrl);
 
