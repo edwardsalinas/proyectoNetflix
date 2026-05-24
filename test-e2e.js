@@ -1,5 +1,6 @@
-const API_URL = "https://kozso8oqh9.execute-api.us-east-1.amazonaws.com/prod";
-const BUCKET_RAW = "proyectonetflixinfrastack-rawvideosbucketae61e2e4-rpyubfvpzjdv";
+process.env.AWS_PROFILE = "netflixdevuser";
+const API_URL = "https://x7t0h8rdwl.execute-api.us-east-1.amazonaws.com/prod";
+const BUCKET_RAW = "proyectonetflixinfrastack-rawvideosbucketae61e2e4-zcl2bfyqdmps";
 const { execSync } = require("child_process");
 const fs = require("fs");
 
@@ -139,7 +140,7 @@ async function runE2E() {
     }
 
     console.log("\n🎉 END-TO-END VOD INGESTION & PLAYBACK TESTS PASSED SUCCESSFULLY!");
-    
+
     console.log("\n👉 VERIFY YOUR UPLOADED VIDEO IN S3:");
     console.log(`You can download/play the exact video you uploaded here (valid for 1 hour):`);
     console.log(rawVideoPresignedUrl);
