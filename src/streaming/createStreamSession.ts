@@ -2,10 +2,58 @@ import { PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { ddbDocClient } from "../shared/dynamodb";
 import { requireScope, getAuthContext } from "../shared/auth";
 import { handleError, formatResponse } from "../shared/errors";
-import { randomUUID } from "crypto";
+import { randomUUID, createSign } from "crypto";
+import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 
 const TABLE_MOVIES = process.env.TABLE_MOVIES;
 const TABLE_STREAM_SESSIONS = process.env.TABLE_STREAM_SESSIONS;
+
+const CLOUDFRONT_DOMAIN = process.env.CLOUDFRONT_DOMAIN || "cdn.netflix-clone.com";
+const CLOUDFRONT_KEY_PAIR_ID = process.env.CLOUDFRONT_KEY_PAIR_ID;
+const CLOUDFRONT_PRIVATE_KEY_SECRET_ARN = process.env.CLOUDFRONT_PRIVATE_KEY_SECRET_ARN;
+
+const secretsClient = new SecretsManagerClient({});
+let cachedPrivateKey: string | null = null;
+
+async function getPrivateKey(): Promise<string> {
+  if (cachedPrivateKey) return cachedPrivateKey;
+  if (!CLOUDFRONT_PRIVATE_KEY_SECRET_ARN) {
+    throw new Error("Missing environment variable: CLOUDFRONT_PRIVATE_KEY_SECRET_ARN");
+  }
+  const response = await secretsClient.send(
+    new GetSecretValueCommand({ SecretId: CLOUDFRONT_PRIVATE_KEY_SECRET_ARN })
+  );
+  if (!response.SecretString) {
+    throw new Error("SecretString is empty in private key secret");
+  }
+  cachedPrivateKey = response.SecretString;
+  return cachedPrivateKey;
+}
+
+function signUrl(resourceUrl: string, expiresEpoch: number, keyPairId: string, privateKey: string): string {
+  const policy = JSON.stringify({
+    Statement: [
+      {
+        Resource: resourceUrl,
+        Condition: {
+          DateLessThan: {
+            "AWS:EpochTime": expiresEpoch,
+          },
+        },
+      },
+    ],
+  });
+
+  const sign = createSign("RSA-SHA1");
+  sign.update(policy);
+  const signature = sign.sign(privateKey, "base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
+
+  const separator = resourceUrl.includes("?") ? "&" : "?";
+  return `${resourceUrl}${separator}Expires=${expiresEpoch}&Signature=${signature}&Key-Pair-Id=${keyPairId}`;
+}
 
 export const handler = async (event: any) => {
   try {
@@ -62,9 +110,34 @@ export const handler = async (event: any) => {
 
     const now = new Date();
     const expiresDate = new Date(now.getTime() + 4 * 60 * 60 * 1000); // 4 hours TTL
+    const expiresEpoch = Math.floor(expiresDate.getTime() / 1000);
 
-    // Fallback to mock CDN URL if no asset is registered in DynamoDB
-    const signedUrl = playlistUrl || `https://cdn.netflix-clone.com/movies/${movieId}/${quality}/playlist.m3u8?Expires=${Math.floor(expiresDate.getTime() / 1000)}&Signature=mock_sig_${randomUUID()}&Key-Pair-Id=K123456789`;
+    // Map playlist URL to CloudFront distribution domain
+    let resourceUrl = "";
+    if (playlistUrl) {
+      try {
+        const urlObj = new URL(playlistUrl);
+        resourceUrl = `https://${CLOUDFRONT_DOMAIN}${urlObj.pathname}`;
+      } catch {
+        resourceUrl = `https://${CLOUDFRONT_DOMAIN}/${playlistUrl.replace(/^\/+/, "")}`;
+      }
+    } else {
+      resourceUrl = `https://${CLOUDFRONT_DOMAIN}/movies/${movieId}/${quality}/playlist.m3u8`;
+    }
+
+    // Sign the CloudFront URL using the private key
+    let signedUrl = "";
+    try {
+      const privateKey = await getPrivateKey();
+      if (CLOUDFRONT_KEY_PAIR_ID && privateKey && privateKey !== "MOCK_PRIVATE_KEY") {
+        signedUrl = signUrl(resourceUrl, expiresEpoch, CLOUDFRONT_KEY_PAIR_ID, privateKey);
+      } else {
+        signedUrl = `${resourceUrl}?Expires=${expiresEpoch}&Signature=mock_sig_${randomUUID()}&Key-Pair-Id=K123456789`;
+      }
+    } catch (err) {
+      console.warn("Failed to sign CloudFront URL, returning mock signed fallback:", err);
+      signedUrl = `${resourceUrl}?Expires=${expiresEpoch}&Signature=mock_sig_${randomUUID()}&Key-Pair-Id=K123456789`;
+    }
 
     const sessionId = randomUUID();
 
