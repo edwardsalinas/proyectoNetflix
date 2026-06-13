@@ -105,6 +105,8 @@ const CognitoAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const exchangeStarted = React.useRef(false);
+
   useEffect(() => {
     const handleAuth = async () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -113,6 +115,9 @@ const CognitoAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const idToken = localStorage.getItem('netflix_cognito_id_token');
 
       if (code) {
+        if (exchangeStarted.current) return;
+        exchangeStarted.current = true;
+
         // Intercambiar código por tokens (PKCE)
         setIsLoading(true);
         const codeVerifier = localStorage.getItem('netflix_pkce_verifier') || '';
