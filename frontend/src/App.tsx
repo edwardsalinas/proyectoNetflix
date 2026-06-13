@@ -26,11 +26,7 @@ const TokenSync: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     if (isAuthenticated) {
       setTokenGetter(async () => {
         try {
-          return await getAccessTokenSilently({
-            authorizationParams: {
-              audience: import.meta.env.VITE_AUTH0_AUDIENCE || 'https://api.netflix-clone.com'
-            }
-          });
+          return await getAccessTokenSilently();
         } catch (err) {
           console.warn('Silent token retrieval failed, using null:', err);
           return null;
