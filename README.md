@@ -100,6 +100,7 @@ Create a `.env` file in the `/frontend` directory (using `.env.example` as a tem
 VITE_COGNITO_DOMAIN=your-cognito-domain.auth.us-east-1.amazoncognito.com
 VITE_COGNITO_CLIENT_ID=your-user-pool-client-id
 VITE_COGNITO_REGION=us-east-1
+VITE_COGNITO_SCOPES=openid profile email
 VITE_API_BASE_URL=https://your-api-gateway-url/prod/v1
 ```
 

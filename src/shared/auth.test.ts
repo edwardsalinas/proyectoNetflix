@@ -20,6 +20,27 @@ describe("Authentication Utilities", () => {
     expect(context.roles).toEqual(["admin"]);
   });
 
+  test("getAuthContext with Cognito JWT authorizer claims", () => {
+    const event = {
+      requestContext: {
+        authorizer: {
+          jwt: {
+            claims: {
+              sub: "user-789",
+              scope: "catalog:read history:write",
+              "cognito:groups": ["premium_user"],
+            },
+          },
+        },
+      },
+    };
+
+    const context = getAuthContext(event);
+    expect(context.userId).toBe("user-789");
+    expect(context.scopes).toEqual(["catalog:read", "history:write"]);
+    expect(context.roles).toEqual(["premium_user"]);
+  });
+
   test("getAuthContext with JWT token in headers", () => {
     // Mock JWT payload: { sub: "user-456", scope: "streaming:read", roles: "premium_user" }
     // Header format: Bearer header.payload.signature
