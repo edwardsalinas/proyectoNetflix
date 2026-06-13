@@ -21,3 +21,7 @@ credentials*
 # Transpiled JS and definition files in src
 src/**/*.js
 src/**/*.d.ts
+
+
+work_planIA.md
+docs/*
