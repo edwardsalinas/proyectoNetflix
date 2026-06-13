@@ -22,6 +22,9 @@
     "typescript": "~5.9.3"
   },
   "dependencies": {
-    "@aws-sdk/client-secrets-manager": "^3.1068.0"
+    "@aws-sdk/client-secrets-manager": "^3.500.0",
+    "@aws-sdk/credential-provider-node": "^3.500.0",
+    "@aws-sdk/util-dynamodb": "^3.500.0",
+    "@opensearch-project/opensearch": "^2.12.0"
   }
 }
