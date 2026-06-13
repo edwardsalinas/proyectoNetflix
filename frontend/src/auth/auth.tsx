@@ -210,7 +210,7 @@ const CognitoAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const getAccessTokenSilently = async () => {
-    const token = localStorage.getItem('netflix_cognito_access_token');
+    const token = localStorage.getItem('netflix_cognito_id_token');
     if (!token) throw new Error('No se encontró token activo');
     return token;
   };
