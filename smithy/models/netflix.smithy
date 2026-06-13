@@ -30,6 +30,11 @@ service NetflixService {
         UserListResource
         WatchHistoryResource
         StreamSessionResource
+        ReviewResource
+        ProfileResource
+    ]
+    operations: [
+        GetRecommendations
     ]
     errors: [
         ValidationError
@@ -927,3 +932,316 @@ structure DeleteStreamSessionInput {
 
 @output
 structure DeleteStreamSessionOutput {}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RECURSO: Review (Calificaciones y Reseñas) — P2
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Identificador único de una reseña (UUID v4)
+@pattern("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+@length(min: 36, max: 36)
+string ReviewId
+
+/// Texto de la reseña del usuario
+@length(min: 1, max: 2000)
+string ReviewText
+
+/// Calificación numérica de la reseña (0.0 a 10.0)
+@range(min: 0, max: 10)
+float ReviewRating
+
+resource ReviewResource {
+    identifiers: { movieId: MovieId, reviewId: ReviewId }
+    create: CreateReview
+    list: ListReviewsByMovie
+    delete: DeleteReview
+}
+
+/// Estructura de una reseña de película
+structure Review {
+    @required
+    reviewId: ReviewId
+
+    @required
+    movieId: MovieId
+
+    @required
+    userId: UserId
+
+    @required
+    rating: ReviewRating
+
+    reviewText: ReviewText
+
+    @required
+    createdAt: Timestamp
+}
+
+list ReviewList {
+    member: Review
+}
+
+/// Crea una nueva reseña para una película.
+/// Scope requerido: catalog:write
+@http(method: "POST", uri: "/v1/movies/{movieId}/reviews", code: 201)
+operation CreateReview {
+    input: CreateReviewInput
+    output: CreateReviewOutput
+    errors: [
+        ValidationError
+        UnauthorizedError
+        ForbiddenError
+        NotFoundError
+    ]
+}
+
+@input
+structure CreateReviewInput {
+    @required
+    @httpLabel
+    movieId: MovieId
+
+    @required
+    rating: ReviewRating
+
+    reviewText: ReviewText
+}
+
+@output
+structure CreateReviewOutput {
+    @required
+    review: Review
+}
+
+/// Lista las reseñas de una película.
+/// Scope requerido: catalog:read
+@http(method: "GET", uri: "/v1/movies/{movieId}/reviews", code: 200)
+@readonly
+@paginated
+operation ListReviewsByMovie {
+    input: ListReviewsByMovieInput
+    output: ListReviewsByMovieOutput
+    errors: [
+        UnauthorizedError
+        NotFoundError
+    ]
+}
+
+@input
+structure ListReviewsByMovieInput {
+    @required
+    @httpLabel
+    movieId: MovieId
+
+    @httpQuery("nextToken")
+    nextToken: PaginationToken
+
+    @httpQuery("maxResults")
+    maxResults: MaxResults
+}
+
+@output
+structure ListReviewsByMovieOutput {
+    @required
+    items: ReviewList
+
+    nextToken: PaginationToken
+}
+
+/// Elimina una reseña de una película.
+/// Solo el autor de la reseña o un super_admin puede eliminarla.
+/// Scope requerido: catalog:write
+@http(method: "DELETE", uri: "/v1/movies/{movieId}/reviews/{reviewId}", code: 204)
+@idempotent
+operation DeleteReview {
+    input: DeleteReviewInput
+    output: DeleteReviewOutput
+    errors: [
+        UnauthorizedError
+        ForbiddenError
+        NotFoundError
+    ]
+}
+
+@input
+structure DeleteReviewInput {
+    @required
+    @httpLabel
+    movieId: MovieId
+
+    @required
+    @httpLabel
+    reviewId: ReviewId
+}
+
+@output
+structure DeleteReviewOutput {}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RECURSO: Profile (Perfiles Múltiples) — P2
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Identificador único de un perfil (UUID v4)
+@pattern("^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
+@length(min: 36, max: 36)
+string ProfileId
+
+/// Nombre del perfil del usuario
+@length(min: 1, max: 50)
+string ProfileName
+
+/// URL del avatar del perfil
+@pattern("^https?://.*")
+@length(min: 1, max: 2048)
+string AvatarUrl
+
+resource ProfileResource {
+    identifiers: { userId: UserId, profileId: ProfileId }
+    create: CreateProfile
+    list: ListProfiles
+    delete: DeleteProfile
+}
+
+/// Estructura de un perfil de usuario
+structure Profile {
+    @required
+    profileId: ProfileId
+
+    @required
+    userId: UserId
+
+    @required
+    name: ProfileName
+
+    avatarUrl: AvatarUrl
+
+    @required
+    createdAt: Timestamp
+}
+
+list ProfileList {
+    member: Profile
+}
+
+/// Lista los perfiles de un usuario.
+/// Máximo 5 perfiles por cuenta.
+/// Scope requerido: mylist:read
+@http(method: "GET", uri: "/v1/users/{userId}/profiles", code: 200)
+@readonly
+operation ListProfiles {
+    input: ListProfilesInput
+    output: ListProfilesOutput
+    errors: [
+        UnauthorizedError
+        ForbiddenError
+    ]
+}
+
+@input
+structure ListProfilesInput {
+    @required
+    @httpLabel
+    userId: UserId
+}
+
+@output
+structure ListProfilesOutput {
+    @required
+    items: ProfileList
+}
+
+/// Crea un nuevo perfil para un usuario (máximo 5).
+/// Scope requerido: mylist:write
+@http(method: "POST", uri: "/v1/users/{userId}/profiles", code: 201)
+operation CreateProfile {
+    input: CreateProfileInput
+    output: CreateProfileOutput
+    errors: [
+        ValidationError
+        UnauthorizedError
+        ForbiddenError
+        ConflictError
+    ]
+}
+
+@input
+structure CreateProfileInput {
+    @required
+    @httpLabel
+    userId: UserId
+
+    @required
+    name: ProfileName
+
+    avatarUrl: AvatarUrl
+}
+
+@output
+structure CreateProfileOutput {
+    @required
+    profile: Profile
+}
+
+/// Elimina un perfil de un usuario.
+/// Scope requerido: mylist:write
+@http(method: "DELETE", uri: "/v1/users/{userId}/profiles/{profileId}", code: 204)
+@idempotent
+operation DeleteProfile {
+    input: DeleteProfileInput
+    output: DeleteProfileOutput
+    errors: [
+        UnauthorizedError
+        ForbiddenError
+        NotFoundError
+    ]
+}
+
+@input
+structure DeleteProfileInput {
+    @required
+    @httpLabel
+    userId: UserId
+
+    @required
+    @httpLabel
+    profileId: ProfileId
+}
+
+@output
+structure DeleteProfileOutput {}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OPERACIÓN: GetRecommendations (Recomendaciones Básicas) — P2
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Obtiene recomendaciones de películas para un perfil basadas en el género más visto.
+/// Retorna hasta 5 películas recomendadas que el perfil no ha completado.
+/// Scope requerido: catalog:read
+@http(method: "GET", uri: "/v1/users/{userId}/profiles/{profileId}/recommendations", code: 200)
+@readonly
+operation GetRecommendations {
+    input: GetRecommendationsInput
+    output: GetRecommendationsOutput
+    errors: [
+        UnauthorizedError
+        ForbiddenError
+        NotFoundError
+    ]
+}
+
+@input
+structure GetRecommendationsInput {
+    @required
+    @httpLabel
+    userId: UserId
+
+    @required
+    @httpLabel
+    profileId: ProfileId
+}
+
+@output
+structure GetRecommendationsOutput {
+    @required
+    items: MovieList
+}
