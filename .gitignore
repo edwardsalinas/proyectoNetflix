@@ -1,3 +1,19 @@
 smithy/build/
 smithy-install/
 node_modules/
+
+# Frontend builds and dependencies
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Keys and sensitive files
+*.pem
+*.key
+credentials*
