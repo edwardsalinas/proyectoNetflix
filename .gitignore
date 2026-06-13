@@ -17,3 +17,7 @@ Thumbs.db
 *.pem
 *.key
 credentials*
+
+# Transpiled JS and definition files in src
+src/**/*.js
+src/**/*.d.ts
