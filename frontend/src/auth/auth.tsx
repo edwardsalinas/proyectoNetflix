@@ -132,7 +132,9 @@ const CognitoAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
 
           if (!response.ok) {
-            throw new Error('Error al intercambiar el código de autorización por tokens');
+            const errorData = await response.text();
+            console.error('Cognito token exchange failed:', response.status, errorData);
+            throw new Error(`Error al intercambiar el código de autorización por tokens: ${response.status} - ${errorData}`);
           }
 
           const data = await response.json();
