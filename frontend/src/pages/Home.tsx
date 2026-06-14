@@ -3,9 +3,9 @@ import { useAuth } from '../auth/auth';
 import { useProfile } from '../context/ProfileContext';
 import { ReviewsSection } from '../components/ReviewsSection';
 import { VideoPlayer } from '../components/VideoPlayer';
-import { LogOut, User, Film, Play, Star, X, ChevronLeft, ChevronRight, Search, Sparkles } from 'lucide-react';
+import { LogOut, User, Film, Play, Star, X, ChevronLeft, ChevronRight, Search, Plus, Check, Clock, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { movieService } from '../api/client';
+import { movieService, historyService, userListService } from '../api/client';
 import { getRecommendations } from '../api/recommendations';
 import { getGenres, getGenreList, getMoviesByGenre } from '../api/genres';
 import type { Movie } from '../api/client';
@@ -27,6 +27,7 @@ export const Home: React.FC = () => {
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [realMovieData, setRealMovieData] = useState<any>(null);
   const [playingMovie, setPlayingMovie] = useState<Movie | null>(null);
+  const [initialPlayTime, setInitialPlayTime] = useState<number | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Movie[]>([]);
@@ -70,11 +71,34 @@ export const Home: React.FC = () => {
     return () => { cancelled = true; };
   }, [activeProfile?.profileId]);
 
+  const [historyList, setHistoryList] = useState<{ movieId: string; currentTime: number; duration?: number; updatedAt?: string }[]>([]);
+  const [userList, setUserList] = useState<{ movieId: string; addedAt: string }[]>([]);
+
+  const historyCarouselRef = useRef<HTMLDivElement>(null);
+  const myListCarouselRef = useRef<HTMLDivElement>(null);
+  const catalogCarouselRef = useRef<HTMLDivElement>(null);
+
+  const fetchUserHistoryAndList = async () => {
+    if (user?.sub) {
+      try {
+        const [history, list] = await Promise.all([
+          historyService.getHistory(user.sub),
+          userListService.getUserList(user.sub)
+        ]);
+        setHistoryList(history);
+        setUserList(list);
+      } catch (err) {
+        console.error('Error al cargar historial y lista:', err);
+      }
+    }
+  };
+
   useEffect(() => {
     const fetchMovies = async () => {
       try {
         const movies = await movieService.getMovies();
         setAllMovies(movies);
+        await fetchUserHistoryAndList();
       } catch (err) {
         console.error('Error al cargar películas:', err);
       } finally {
@@ -82,7 +106,7 @@ export const Home: React.FC = () => {
       }
     };
     fetchMovies();
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (selectedMovie) {
@@ -156,7 +180,8 @@ export const Home: React.FC = () => {
 
   const heroMovie = allMovies.find(m => m.poster != null) || allMovies[0];
 
-  const scroll = (el: HTMLDivElement | null, direction: 'left' | 'right') => {
+  const scroll = (target: HTMLDivElement | null | React.RefObject<HTMLDivElement>, direction: 'left' | 'right') => {
+    const el = target && 'current' in target ? target.current : target;
     if (!el) return;
     const amount = el.clientWidth * 0.6;
     el.scrollBy({
@@ -169,6 +194,59 @@ export const Home: React.FC = () => {
     document.getElementById('recomendaciones')?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const isInMyList = (movieId: string) => {
+    return userList.some(item => item.movieId === movieId);
+  };
+
+  const handleToggleMyList = async () => {
+    if (!selectedMovie || !user?.sub) return;
+    const movieId = selectedMovie.movieId;
+    const added = isInMyList(movieId);
+
+    // Actualización optimista
+    if (added) {
+      setUserList(prev => prev.filter(item => item.movieId !== movieId));
+    } else {
+      setUserList(prev => [...prev, { movieId, addedAt: new Date().toISOString() }]);
+    }
+
+    try {
+      if (added) {
+        await userListService.removeFromList(user.sub, movieId);
+      } else {
+        await userListService.addToList(user.sub, movieId);
+      }
+    } catch (err) {
+      console.error('Error al actualizar Mi Lista:', err);
+      // Revertir en caso de error
+      if (added) {
+        setUserList(prev => [...prev, { movieId, addedAt: new Date().toISOString() }]);
+      } else {
+        setUserList(prev => prev.filter(item => item.movieId !== movieId));
+      }
+    }
+  };
+
+  const handlePlayMovie = (movie: Movie, initialTime?: number) => {
+    setInitialPlayTime(initialTime);
+    setPlayingMovie(movie);
+  };
+
+  const continueWatchingMovies = historyList
+    .map(hist => {
+      const movie = allMovies.find(m => m.movieId === hist.movieId);
+      if (!movie) return null;
+      return {
+        ...movie,
+        currentTime: hist.currentTime,
+        durationSeconds: hist.duration || (parseInt(movie.duration) * 60) || 3600
+      };
+    })
+    .filter((m): m is NonNullable<typeof m> => m !== null && m.currentTime > 0);
+
+  const myListMovies = userList
+    .map(item => allMovies.find(m => m.movieId === item.movieId))
+    .filter((m): m is Movie => !!m);
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0c', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -414,7 +492,7 @@ export const Home: React.FC = () => {
               </p>
               <div style={{ display: 'flex', gap: '16px' }}>
                 <button
-                  onClick={() => setPlayingMovie(heroMovie)}
+                  onClick={() => handlePlayMovie(heroMovie)}
                   style={{
                     backgroundColor: '#e50914',
                     color: '#fff',
@@ -436,15 +514,225 @@ export const Home: React.FC = () => {
             </div>
           )}
 
+          {/* Continuar Viendo */}
+          {continueWatchingMovies.length > 0 && (
+            <div style={{ padding: '40px 4% 0 4%' }}>
+              <h2 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Clock size={22} color="#a1a1aa" />
+                Continuar Viendo
+              </h2>
+
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={() => scroll(historyCarouselRef, 'left')}
+                  style={{
+                    position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 10,
+                    background: 'linear-gradient(to right, rgba(10,10,12,0.8) 0%, transparent 100%)',
+                    border: 'none', color: '#fff', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', padding: '0 12px',
+                    opacity: 0, transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => { if (e.currentTarget.parentElement) e.currentTarget.style.opacity = '1'; }}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}
+                >
+                  <ChevronLeft size={32} />
+                </button>
+
+                <div
+                  ref={historyCarouselRef}
+                  style={{
+                    display: 'flex', gap: '16px', overflowX: 'auto',
+                    scrollBehavior: 'smooth', paddingBottom: '8px',
+                    scrollbarWidth: 'none', msOverflowStyle: 'none'
+                  }}
+                >
+                  {continueWatchingMovies.map(movie => {
+                    const pct = Math.min(Math.max((movie.currentTime / movie.durationSeconds) * 100, 1), 100);
+                    return (
+                      <div
+                        key={movie.movieId}
+                        onClick={() => handlePlayMovie(movie, movie.currentTime)}
+                        className="glass-panel"
+                        style={{
+                          flex: '0 0 200px',
+                          borderRadius: '8px',
+                          overflow: 'hidden',
+                          cursor: 'pointer',
+                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                          border: '1px solid rgba(255, 255, 255, 0.05)',
+                          position: 'relative'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-5px)';
+                          e.currentTarget.style.borderColor = 'rgba(229, 9, 20, 0.4)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.05)';
+                        }}
+                      >
+                        <div style={{ height: '280px', overflow: 'hidden', position: 'relative' }}>
+                          <img
+                            src={movie.poster || DEFAULT_POSTER}
+                            alt={movie.title}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_POSTER; }}
+                          />
+                          <div style={{
+                            position: 'absolute', bottom: 0, left: 0, width: '100%',
+                            height: '3px', backgroundColor: 'rgba(255,255,255,0.2)', zIndex: 5
+                          }}>
+                            <div style={{
+                              width: `${pct}%`, height: '100%', backgroundColor: '#e50914'
+                            }} />
+                          </div>
+                        </div>
+                        <div style={{ padding: '12px' }}>
+                          <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{movie.title}</h3>
+                          <div style={{ display: 'flex', gap: '8px', fontSize: '12px', color: '#a1a1aa', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '3px', color: '#f5f5f7' }}>
+                              <Star size={10} fill="#e50914" color="#e50914" />
+                              {movie.rating}
+                            </span>
+                            <span>{movie.duration}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <button
+                  onClick={() => scroll(historyCarouselRef, 'right')}
+                  style={{
+                    position: 'absolute', right: 0, top: 0, bottom: 0, zIndex: 10,
+                    background: 'linear-gradient(to left, rgba(10,10,12,0.8) 0%, transparent 100%)',
+                    border: 'none', color: '#fff', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', padding: '0 12px',
+                    opacity: 0, transition: 'opacity 0.2s'
+                  }}
+                  onMouseEnter={(e) => { if (e.currentTarget.parentElement) e.currentTarget.style.opacity = '1'; }}
+                  onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}
+                >
+                  <ChevronRight size={32} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Mi Lista */}
           <div style={{ padding: '40px 4% 0 4%' }}>
             <h2 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <Film size={22} className="text-secondary" />
-              Mi Lista de Contenido
+              Mi Lista
+            </h2>
+
+            <div style={{ position: 'relative' }}>
+              {myListMovies.length === 0 ? (
+                <p style={{ color: '#a1a1aa', fontSize: '15px', padding: '20px 0' }}>
+                  Tu lista está vacía. Agrega películas desde el catálogo.
+                </p>
+              ) : (
+                <>
+                  <button
+                    onClick={() => scroll(myListCarouselRef, 'left')}
+                    style={{
+                      position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 10,
+                      background: 'linear-gradient(to right, rgba(10,10,12,0.8) 0%, transparent 100%)',
+                      border: 'none', color: '#fff', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', padding: '0 12px',
+                      opacity: 0, transition: 'opacity 0.2s'
+                    }}
+                    onMouseEnter={(e) => { if (e.currentTarget.parentElement) e.currentTarget.style.opacity = '1'; }}
+                    onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}
+                  >
+                    <ChevronLeft size={32} />
+                  </button>
+
+                  <div
+                    ref={myListCarouselRef}
+                    style={{
+                      display: 'flex', gap: '16px', overflowX: 'auto',
+                      scrollBehavior: 'smooth', paddingBottom: '8px',
+                      scrollbarWidth: 'none', msOverflowStyle: 'none'
+                    }}
+                  >
+                    {myListMovies.map(movie => (
+                      <div
+                        key={movie.movieId}
+                        onClick={() => setSelectedMovie(movie)}
+                        className="glass-panel"
+                        style={{
+                          flex: '0 0 200px',
+                          borderRadius: '8px',
+                          overflow: 'hidden',
+                          cursor: 'pointer',
+                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                          border: '1px solid rgba(255, 255, 255, 0.05)'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-5px)';
+                          e.currentTarget.style.borderColor = 'rgba(229, 9, 20, 0.4)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.05)';
+                        }}
+                      >
+                        <div style={{ height: '280px', overflow: 'hidden', position: 'relative' }}>
+                          <img
+                            src={movie.poster || DEFAULT_POSTER}
+                            alt={movie.title}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_POSTER; }}
+                          />
+                        </div>
+                        <div style={{ padding: '12px' }}>
+                          <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{movie.title}</h3>
+                          <div style={{ display: 'flex', gap: '8px', fontSize: '12px', color: '#a1a1aa', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '3px', color: '#f5f5f7' }}>
+                              <Star size={10} fill="#e50914" color="#e50914" />
+                              {movie.rating}
+                            </span>
+                            <span>{movie.duration}</span>
+                            <span style={{ backgroundColor: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px', fontSize: '10px' }}>
+                              {movie.genre}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => scroll(myListCarouselRef, 'right')}
+                    style={{
+                      position: 'absolute', right: 0, top: 0, bottom: 0, zIndex: 10,
+                      background: 'linear-gradient(to left, rgba(10,10,12,0.8) 0%, transparent 100%)',
+                      border: 'none', color: '#fff', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', padding: '0 12px',
+                      opacity: 0, transition: 'opacity 0.2s'
+                    }}
+                    onMouseEnter={(e) => { if (e.currentTarget.parentElement) e.currentTarget.style.opacity = '1'; }}
+                    onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}
+                  >
+                    <ChevronRight size={32} />
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Catálogo Completo */}
+          <div style={{ padding: '40px 4% 0 4%' }}>
+            <h2 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Film size={22} className="text-secondary" />
+              Catálogo Completo
             </h2>
 
             <div style={{ position: 'relative' }}>
               <button
-                onClick={() => scroll(carouselRef.current, 'left')}
+                onClick={() => scroll(catalogCarouselRef, 'left')}
                 style={{
                   position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 10,
                   background: 'linear-gradient(to right, rgba(10,10,12,0.8) 0%, transparent 100%)',
@@ -459,21 +747,11 @@ export const Home: React.FC = () => {
               </button>
 
               <div
-                ref={carouselRef}
+                ref={catalogCarouselRef}
                 style={{
                   display: 'flex', gap: '16px', overflowX: 'auto',
                   scrollBehavior: 'smooth', paddingBottom: '8px',
                   scrollbarWidth: 'none', msOverflowStyle: 'none'
-                }}
-                onScroll={(e) => {
-                  const container = e.currentTarget;
-                  const leftBtn = container.previousElementSibling as HTMLElement;
-                  const rightBtn = container.nextElementSibling as HTMLElement;
-                  if (leftBtn) leftBtn.style.opacity = container.scrollLeft > 10 ? '1' : '0';
-                  if (rightBtn) {
-                    rightBtn.style.opacity =
-                      container.scrollLeft + container.clientWidth < container.scrollWidth - 10 ? '1' : '0';
-                  }
                 }}
               >
                 {allMovies.map(movie => (
@@ -524,7 +802,7 @@ export const Home: React.FC = () => {
               </div>
 
               <button
-                onClick={() => scroll(carouselRef.current, 'right')}
+                onClick={() => scroll(catalogCarouselRef, 'right')}
                 style={{
                   position: 'absolute', right: 0, top: 0, bottom: 0, zIndex: 10,
                   background: 'linear-gradient(to left, rgba(10,10,12,0.8) 0%, transparent 100%)',
@@ -932,7 +1210,12 @@ export const Home: React.FC = () => {
         <VideoPlayer
           movie={playingMovie}
           userId={user.sub}
-          onClose={() => setPlayingMovie(null)}
+          initialTime={initialPlayTime}
+          onClose={async () => {
+            setPlayingMovie(null);
+            setInitialPlayTime(undefined);
+            await fetchUserHistoryAndList();
+          }}
         />
       )}
 
@@ -1036,6 +1319,33 @@ export const Home: React.FC = () => {
                   }}
                 >
                   <Play size={16} fill="#fff" /> Ver Ahora
+                </button>
+                <button
+                  onClick={handleToggleMyList}
+                  style={{
+                    backgroundColor: 'transparent',
+                    color: '#fff',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    padding: '10px 24px',
+                    borderRadius: '6px',
+                    fontSize: '15px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  {isInMyList(selectedMovie.movieId) ? (
+                    <>
+                      <Check size={16} /> En Mi Lista
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={16} /> Mi Lista
+                    </>
+                  )}
                 </button>
               </div>
 

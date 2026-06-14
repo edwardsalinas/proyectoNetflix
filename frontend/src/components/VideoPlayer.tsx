@@ -8,9 +8,10 @@ interface VideoPlayerProps {
   movie: Movie;
   userId: string;
   onClose: () => void;
+  initialTime?: number;
 }
 
-export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, onClose }) => {
+export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, onClose, initialTime }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastReportedRef = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -20,7 +21,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, onClose
     lastReportedRef.current = currentTime;
     try {
       await historyService.updateProgress(userId, movie.movieId, currentTime);
-    } catch {
+    } catch (err) {
       /* silent */
     }
   }, [userId, movie.movieId]);
@@ -33,6 +34,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, onClose
         const session = await streamingService.createSession(movie.movieId);
         const video = videoRef.current;
         if (!video) return;
+
+        if (initialTime) {
+          lastReportedRef.current = initialTime;
+        }
 
         if (Hls.isSupported()) {
           const searchParams = new URL(session.url).search;
@@ -65,10 +70,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, onClose
           });
           hls.loadSource(session.url);
           hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            if (initialTime) {
+              video.currentTime = initialTime;
+            }
+          });
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
           video.src = session.url;
+          if (initialTime) {
+            const setTime = () => {
+              video.currentTime = initialTime;
+              video.removeEventListener('loadedmetadata', setTime);
+            };
+            video.addEventListener('loadedmetadata', setTime);
+          }
         }
-      } catch {
+      } catch (err) {
         /* silent */
       }
     };

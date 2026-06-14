@@ -295,8 +295,35 @@ export const streamingService = {
 };
 
 export const historyService = {
+  getHistory: async (userId: string): Promise<{ movieId: string; currentTime: number; duration?: number; updatedAt?: string }[]> => {
+    try {
+      const response = await apiClient.get(`/users/${userId}/history`);
+      return response.data.items || response.data || [];
+    } catch (err) {
+      console.warn('Falla en API de historial, usando array vacío:', err);
+      return [];
+    }
+  },
   updateProgress: async (userId: string, movieId: string, currentTime: number): Promise<void> => {
     await apiClient.put(`/users/${userId}/history/${movieId}`, { currentTime });
+  }
+};
+
+export const userListService = {
+  getUserList: async (userId: string): Promise<{ movieId: string; addedAt: string }[]> => {
+    try {
+      const response = await apiClient.get(`/users/${userId}/lists`);
+      return response.data.items || response.data || [];
+    } catch (err) {
+      console.warn('Falla en API de lista personal, usando array vacío:', err);
+      return [];
+    }
+  },
+  addToList: async (userId: string, movieId: string): Promise<void> => {
+    await apiClient.post(`/users/${userId}/lists`, { movieId });
+  },
+  removeFromList: async (userId: string, movieId: string): Promise<void> => {
+    await apiClient.delete(`/users/${userId}/lists/${movieId}`);
   }
 };
 export const reviewService = {
