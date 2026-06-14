@@ -39,11 +39,11 @@ function getClaimsFromEvent(event: any): AuthClaims | null {
 function normalizeScopes(claims: AuthClaims): string[] {
   const scopeString = claims.scope || "";
   if (typeof scopeString !== "string") {
-    return ["catalog:read", "mylist:read", "mylist:write", "history:read", "history:write"];
+    return ["catalog:read", "catalog:write", "mylist:read", "mylist:write", "history:read", "history:write"];
   }
   let scopes = scopeString.split(" ").filter((s: string) => s.length > 0);
   if (scopes.length === 0) {
-    scopes = ["catalog:read", "mylist:read", "mylist:write", "history:read", "history:write"];
+    scopes = ["catalog:read", "catalog:write", "mylist:read", "mylist:write", "history:read", "history:write"];
   }
   return scopes;
 }
