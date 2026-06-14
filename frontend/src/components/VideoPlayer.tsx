@@ -118,10 +118,31 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, profile
               video.currentTime = initialTime;
             }
             if (hls && hls.levels) {
-              const mapped = hls.levels.map((lvl: any) => {
-                if (lvl.height) return `${lvl.height}p`;
+              const mapped = hls.levels.map((lvl: any, index: number) => {
+                if (lvl.height && lvl.height > 0) return `${lvl.height}p`;
                 if (lvl.width === 3840) return '2160p';
-                return `${Math.round(lvl.bitrate / 1000)} Kbps`;
+                
+                // Parse from attrs RESOLUTION
+                if (lvl.attrs && lvl.attrs.RESOLUTION) {
+                  const parts = lvl.attrs.RESOLUTION.split('x');
+                  if (parts.length === 2) {
+                    const h = parseInt(parts[1], 10);
+                    if (h > 0) return `${h}p`;
+                  }
+                }
+                
+                // Parse from bitrate/bandwidth
+                const bitrate = lvl.bitrate || (lvl.attrs && lvl.attrs.BANDWIDTH ? parseInt(lvl.attrs.BANDWIDTH, 10) : 0);
+                if (bitrate > 0) {
+                  if (bitrate >= 10000000) return '2160p';
+                  if (bitrate >= 4000000) return '1080p';
+                  if (bitrate >= 2000000) return '720p';
+                  if (bitrate >= 800000) return '480p';
+                  return `${Math.round(bitrate / 1000)} Kbps`;
+                }
+                
+                // Fallback for single level / redirect
+                return hls.levels.length === 1 ? '720p' : `Opción ${index + 1}`;
               });
               setQualities(['Auto', ...Array.from(new Set(mapped))]);
             }
