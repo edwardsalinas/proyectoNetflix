@@ -214,6 +214,27 @@ export const Home: React.FC = () => {
             </div>
           )}
 
+          {(user?.['custom:role'] === 'super_admin' || user?.['custom:role'] === 'content_admin' ||
+            user?.roles?.includes('super_admin') || user?.roles?.includes('content_admin')) && (
+            <button
+              onClick={() => navigate('/admin')}
+              title="Panel de Administración"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: '#a1a1aa',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                transition: 'color 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.color = '#e50914'}
+              onMouseLeave={(e) => e.currentTarget.style.color = '#a1a1aa'}
+            >
+              <Film size={20} />
+            </button>
+          )}
+
           <button
             onClick={handleSwitchProfile}
             title="Cambiar Perfil"

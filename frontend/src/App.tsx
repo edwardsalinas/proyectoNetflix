@@ -5,6 +5,7 @@ import { ProfileProvider, useProfile } from './context/ProfileContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ProfileSelection } from './pages/ProfileSelection';
 import { Home } from './pages/Home';
+import { Admin } from './pages/Admin';
 import { setTokenGetter } from './api/client';
 
 // Componente para decidir a dónde redirigir al usuario al ingresar
@@ -133,6 +134,13 @@ export const App: React.FC = () => {
             <Route path="/home" element={
               <ProtectedRoute>
                 <Home />
+              </ProtectedRoute>
+            } />
+
+            {/* Panel de Administración */}
+            <Route path="/admin" element={
+              <ProtectedRoute>
+                <Admin />
               </ProtectedRoute>
             } />
 

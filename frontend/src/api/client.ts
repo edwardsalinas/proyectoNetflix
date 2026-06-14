@@ -354,3 +354,98 @@ export const reviewService = {
     await apiClient.delete(`/movies/${movieId}/reviews/${reviewId}`);
   },
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN SERVICE - CRUD DE PELÍCULAS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AdminMovie extends Movie {
+  director?: string;
+  releaseYear?: number;
+  durationMinutes?: number;
+  genreId?: string;
+  videoStatus?: 'pending' | 'transcoding' | 'ready';
+  posterUrl?: string | null;
+  synopsis?: string;
+}
+
+export interface CreateMovieInput {
+  title: string;
+  synopsis: string;
+  genreId: string;
+  director: string;
+  releaseYear: number;
+  durationMinutes: number;
+}
+
+export const adminService = {
+  getAllMovies: async (): Promise<AdminMovie[]> => {
+    try {
+      const response = await apiClient.get('/movies');
+      const list = extractMovies(response.data) as AdminMovie[];
+      return list;
+    } catch (err) {
+      console.error('Error al obtener películas para admin:', err);
+      return [];
+    }
+  },
+
+  createMovie: async (data: CreateMovieInput): Promise<AdminMovie> => {
+    try {
+      const response = await apiClient.post('/movies', data);
+      const movie = response.data.movie || response.data;
+      return {
+        movieId: movie.movieId || movie.id,
+        title: movie.title,
+        synopsis: movie.synopsis || movie.description,
+        genreId: movie.genreId || movie.genre,
+        director: movie.director,
+        releaseYear: movie.releaseYear,
+        durationMinutes: movie.durationMinutes,
+        description: movie.synopsis || movie.description || '',
+        genre: movie.genreId || movie.genre || '',
+        rating: movie.rating || 0,
+        duration: `${movie.durationMinutes || 0} min`,
+        poster: movie.posterUrl || movie.poster || null,
+        videoStatus: movie.videoStatus || 'pending'
+      };
+    } catch (err) {
+      console.error('Error al crear película:', err);
+      throw err;
+    }
+  },
+
+  updateMovie: async (movieId: string, data: Partial<CreateMovieInput>): Promise<AdminMovie> => {
+    try {
+      const response = await apiClient.put(`/movies/${movieId}`, data);
+      const movie = response.data.movie || response.data;
+      return {
+        movieId: movie.movieId || movie.id,
+        title: movie.title,
+        synopsis: movie.synopsis || movie.description,
+        genreId: movie.genreId || movie.genre,
+        director: movie.director,
+        releaseYear: movie.releaseYear,
+        durationMinutes: movie.durationMinutes,
+        description: movie.synopsis || movie.description || '',
+        genre: movie.genreId || movie.genre || '',
+        rating: movie.rating || 0,
+        duration: `${movie.durationMinutes || 0} min`,
+        poster: movie.posterUrl || movie.poster || null,
+        videoStatus: movie.videoStatus || 'pending'
+      };
+    } catch (err) {
+      console.error('Error al actualizar película:', err);
+      throw err;
+    }
+  },
+
+  deleteMovie: async (movieId: string): Promise<void> => {
+    try {
+      await apiClient.delete(`/movies/${movieId}`);
+    } catch (err) {
+      console.error('Error al eliminar película:', err);
+      throw err;
+    }
+  }
+};

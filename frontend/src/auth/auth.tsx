@@ -4,6 +4,8 @@ interface AuthUser {
   sub: string;
   name: string;
   email?: string;
+  'custom:role'?: string;
+  roles?: string[];
 }
 
 interface AuthContextType {
@@ -172,7 +174,14 @@ const CognitoAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           
           const payload = parseJwt(data.id_token);
           if (payload) {
-            setUser({ sub: payload.sub, name: payload.email || payload['cognito:username'] || 'Usuario' });
+            setUser({
+              sub: payload.sub,
+              name: payload.email || payload['cognito:username'] || 'Usuario',
+              email: payload.email,
+              'custom:role': payload['custom:role'],
+              // cognito:groups se incluye automáticamente en el token cuando el usuario pertenece a un grupo
+              roles: payload.roles || payload['cognito:groups'],
+            });
             setIsAuthenticated(true);
           }
           
@@ -191,7 +200,13 @@ const CognitoAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           // Validar expiración básica
           const exp = payload.exp * 1000;
           if (Date.now() < exp) {
-            setUser({ sub: payload.sub, name: payload.email || payload['cognito:username'] || 'Usuario' });
+            setUser({
+              sub: payload.sub,
+              name: payload.email || payload['cognito:username'] || 'Usuario',
+              email: payload.email,
+              'custom:role': payload['custom:role'],
+              roles: payload.roles || payload['cognito:groups'],
+            });
             setIsAuthenticated(true);
           } else {
             // Token expirado
@@ -298,7 +313,9 @@ const MockAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children })
   const mockUser: AuthUser = {
     sub: 'cognito|mockuser12345',
     name: 'Invitado Cognito',
-    email: 'invitado@netflix-clone.com'
+    email: 'invitado@netflix-clone.com',
+    'custom:role': 'super_admin',
+    roles: ['super_admin'],
   };
 
   return (
