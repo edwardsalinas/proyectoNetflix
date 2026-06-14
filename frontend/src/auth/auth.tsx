@@ -217,7 +217,9 @@ const CognitoAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('netflix_redirect_return_to', options.appState.returnTo);
     }
 
+
     const authUrl = `https://${config.domain}/oauth2/authorize?response_type=code&client_id=${config.clientId}&redirect_uri=${encodeURIComponent(config.redirectUri)}&code_challenge=${challenge}&code_challenge_method=S256&scope=openid+email+profile`;
+
     window.location.href = authUrl;
   };
 
