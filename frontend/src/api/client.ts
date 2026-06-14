@@ -152,18 +152,22 @@ export const reviewService = {
       const payload = response.data.items || response.data;
       const list = Array.isArray(payload) ? payload : [];
       return list.map((item: ApiReview) => normalizeReview(item, movieId));
-    } catch (err) {
-      console.warn('Falla en la API de reseñas, utilizando fallback local:', err);
+    } catch (err: unknown) {
+      // Solo usar fallback local en errores de red; errores de API (4xx/5xx) se propagan
+      const axiosErr = err as { response?: { status?: number } };
+      if (axiosErr?.response?.status) {
+        console.warn(`API de reseñas devolvió ${axiosErr.response.status}, usando fallback local.`);
+      }
       return getLocalReviews(movieId);
     }
   },
 
   createReview: async (
-    movieId: string, 
-    userId: string, 
-    profileId: string, 
-    profileName: string, 
-    rating: number, 
+    movieId: string,
+    userId: string,
+    profileId: string,
+    profileName: string,
+    rating: number,
     comment: string
   ): Promise<Review> => {
     const newReview: Review = {
@@ -180,6 +184,7 @@ export const reviewService = {
     try {
       const response = await apiClient.post(`/movies/${movieId}/reviews`, {
         profileId,
+        profileName,
         rating,
         reviewText: comment,
       });
@@ -189,5 +194,9 @@ export const reviewService = {
       addLocalReview(movieId, newReview);
       return newReview;
     }
-  }
+  },
+
+  deleteReview: async (movieId: string, reviewId: string): Promise<void> => {
+    await apiClient.delete(`/movies/${movieId}/reviews/${reviewId}`);
+  },
 };
