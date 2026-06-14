@@ -293,8 +293,19 @@ export const handler = async (event: any) => {
         // ───────────────────────────────────────────────────────────────────────
         console.log(`Simulating transcode for movie ${movieId} in AWS...`);
         
-        // Mock HLS Playlist redirects to a real playable stream (Tears of Steel)
-        const playlistContent = `#EXTM3U
+        // Mock HLS Playlist containing all qualities referencing sub-playlists
+        const masterPlaylistContent = `#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-STREAM-INF:BANDWIDTH=15000000,RESOLUTION=3840x2160
+output_2160p.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080
+output_1080p.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720
+output_720p.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=1000000,RESOLUTION=854x480
+output_480p.m3u8`;
+
+        const subPlaylistContent = `#EXTM3U
 #EXT-X-VERSION:3
 #EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=1280x720
 https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8`;
@@ -306,7 +317,7 @@ https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tear
           new PutObjectCommand({
             Bucket: BUCKET_TRANSCODED_VIDEOS,
             Key: masterManifestKey,
-            Body: playlistContent,
+            Body: masterPlaylistContent,
             ContentType: "application/x-mpegURL",
           })
         );
@@ -320,7 +331,7 @@ https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tear
             new PutObjectCommand({
               Bucket: BUCKET_TRANSCODED_VIDEOS,
               Key: subPlaylistKey,
-              Body: playlistContent,
+              Body: subPlaylistContent,
               ContentType: "application/x-mpegURL",
             })
           );
