@@ -300,8 +300,8 @@ export const movieService = {
 };
 
 export const streamingService = {
-  createSession: async (movieId: string): Promise<{ url: string }> => {
-    const response = await apiClient.post('/streaming/sessions', { movieId });
+  createSession: async (movieId: string, preferredQuality?: string): Promise<{ url: string }> => {
+    const response = await apiClient.post('/streaming/sessions', { movieId, preferredQuality });
     return {
       url: response.data.signedUrl || response.data.url
     };
