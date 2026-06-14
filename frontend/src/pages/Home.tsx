@@ -3,7 +3,7 @@ import { useAuth } from '../auth/auth';
 import { useProfile } from '../context/ProfileContext';
 import { ReviewsSection } from '../components/ReviewsSection';
 import { VideoPlayer } from '../components/VideoPlayer';
-import { LogOut, User, Film, Play, Star, X, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { LogOut, User, Film, Play, Star, X, ChevronLeft, ChevronRight, Search, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { movieService } from '../api/client';
 import { getRecommendations } from '../api/recommendations';
@@ -543,8 +543,14 @@ export const Home: React.FC = () => {
           {!recommendationsLoading && recommendations.length > 0 && (
             <div id="recomendaciones" style={{ padding: '40px 4% 0 4%' }}>
               <h2 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                <Film size={22} className="text-secondary" />
-                Recomendadas para ti
+                <Sparkles size={22} color="#e50914" />
+                <span style={{ 
+                  background: 'linear-gradient(to right, #ffffff, #a1a1aa)', 
+                  WebkitBackgroundClip: 'text', 
+                  WebkitTextFillColor: 'transparent' 
+                }}>
+                  Recomendadas para {activeProfile?.name || 'ti'}
+                </span>
               </h2>
 
               <div style={{ position: 'relative' }}>
@@ -605,10 +611,10 @@ export const Home: React.FC = () => {
                     >
                       <div style={{ height: '280px', overflow: 'hidden', position: 'relative' }}>
                         <img
-                          src={movie.poster || DEFAULT_POSTER}
-                          alt={movie.title}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_POSTER; }}
+                           src={movie.poster || DEFAULT_POSTER}
+                           alt={movie.title}
+                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                           onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_POSTER; }}
                         />
                       </div>
                       <div style={{ padding: '12px' }}>
@@ -647,11 +653,35 @@ export const Home: React.FC = () => {
           )}
 
           {recommendationsLoading && (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: '40px 0' }}>
-              <div style={{
-                width: '36px', height: '36px', border: '3px solid rgba(229, 9, 20, 0.2)',
-                borderTopColor: '#e50914', borderRadius: '50%', animation: 'spin 0.8s linear infinite'
-              }} />
+            <div style={{ padding: '40px 4% 0 4%' }}>
+              <h2 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Sparkles size={22} color="#e50914" style={{ opacity: 0.5 }} />
+                <div className="animate-pulse" style={{ width: '250px', height: '24px', backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '4px' }} />
+              </h2>
+              <div style={{ display: 'flex', gap: '16px', overflow: 'hidden' }}>
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div
+                    key={i}
+                    className="animate-pulse"
+                    style={{
+                      flex: '0 0 200px',
+                      height: '344px',
+                      borderRadius: '8px',
+                      backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                      border: '1px solid rgba(255, 255, 255, 0.05)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    <div style={{ height: '280px', backgroundColor: 'rgba(255, 255, 255, 0.05)' }} />
+                    <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <div style={{ height: '14px', backgroundColor: 'rgba(255, 255, 255, 0.08)', borderRadius: '4px', width: '80%' }} />
+                      <div style={{ height: '12px', backgroundColor: 'rgba(255, 255, 255, 0.05)', borderRadius: '4px', width: '50%' }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
