@@ -28,9 +28,12 @@ export const handler = async (event: any) => {
       exclusiveStartKey = JSON.parse(Buffer.from(nextToken, "base64").toString("utf-8"));
     }
 
+    const profileId = event.queryStringParameters?.profileId;
+    const dbUserId = profileId ? `${userId}#${profileId}` : userId;
+
     let filterExpression = undefined;
     let expressionAttributeValues: any = {
-      ":userId": userId,
+      ":userId": dbUserId,
     };
 
     if (completedStr !== undefined) {

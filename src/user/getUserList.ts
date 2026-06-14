@@ -18,12 +18,15 @@ export const handler = async (event: any) => {
     // Enforce owner-only or admin check
     validateUserOrAdmin(event, userId);
 
+    const profileId = event.queryStringParameters?.profileId;
+    const dbUserId = profileId ? `${userId}#${profileId}` : userId;
+
     const result = await ddbDocClient.send(
       new QueryCommand({
         TableName: TABLE_USER_LISTS,
         KeyConditionExpression: "userId = :userId",
         ExpressionAttributeValues: {
-          ":userId": userId,
+          ":userId": dbUserId,
         },
       })
     );

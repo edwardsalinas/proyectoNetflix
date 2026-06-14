@@ -48,9 +48,12 @@ export const handler = async (event: any) => {
       throw error;
     }
 
+    const profileId = event.queryStringParameters?.profileId || body.profileId;
+    const dbUserId = profileId ? `${userId}#${profileId}` : userId;
+
     // 2. Update entry in DynamoDB
     const entry = {
-      userId,
+      userId: dbUserId,
       movieId,
       progressSeconds: parseInt(progressSeconds),
       completed: completed !== undefined ? completed : false,
