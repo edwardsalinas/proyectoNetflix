@@ -54,8 +54,29 @@ export const Home: React.FC = () => {
   const { logout } = useAuth();
   const { activeProfile, clearActiveProfile } = useProfile();
   const navigate = useNavigate();
+  const [movies, setMovies] = useState<Movie[]>(MOCK_MOVIES);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [realMovieData, setRealMovieData] = useState<any>(null);
+
+  useEffect(() => {
+    // Cargar catálogo de películas real y actualizar calificaciones en el estado
+    movieService.getMovies().then(apiMovies => {
+      if (apiMovies && apiMovies.length > 0) {
+        setMovies(prevMovies => 
+          prevMovies.map(mockMovie => {
+            const match = apiMovies.find(apiM => apiM.movieId === mockMovie.movieId);
+            if (match) {
+              return {
+                ...mockMovie,
+                rating: match.rating !== undefined ? match.rating : mockMovie.rating
+              };
+            }
+            return mockMovie;
+          })
+        );
+      }
+    });
+  }, []);
 
   useEffect(() => {
     if (selectedMovie) {
@@ -63,6 +84,10 @@ export const Home: React.FC = () => {
       movieService.getMovie(selectedMovie.movieId).then(data => {
         if (data) {
           setRealMovieData(data);
+          // Actualizar también la película en la lista principal por si cambió la puntuación tras una reseña
+          setMovies(prevMovies =>
+            prevMovies.map(m => m.movieId === selectedMovie.movieId ? { ...m, rating: data.rating } : m)
+          );
         }
       });
     }
@@ -167,7 +192,7 @@ export const Home: React.FC = () => {
       <div 
         style={{
           height: '60vh',
-          backgroundImage: `linear-gradient(to top, #0a0a0c 0%, rgba(10, 10, 12, 0.4) 100%), url(${MOCK_MOVIES[0].bannerUrl})`,
+          backgroundImage: movies.length > 0 ? `linear-gradient(to top, #0a0a0c 0%, rgba(10, 10, 12, 0.4) 100%), url(${movies[0].bannerUrl})` : '',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           display: 'flex',
@@ -177,14 +202,14 @@ export const Home: React.FC = () => {
         }}
       >
         <h1 style={{ fontSize: '56px', fontWeight: 800, marginBottom: '16px', letterSpacing: '-1px' }}>
-          {MOCK_MOVIES[0].title}
+          {movies.length > 0 ? movies[0].title : ''}
         </h1>
         <p style={{ fontSize: '16px', color: '#d4d4d8', maxWidth: '600px', marginBottom: '24px', lineHeight: '1.6' }}>
-          {MOCK_MOVIES[0].description}
+          {movies.length > 0 ? movies[0].description : ''}
         </p>
         <div style={{ display: 'flex', gap: '16px' }}>
           <button 
-            onClick={() => setSelectedMovie(MOCK_MOVIES[0])}
+            onClick={() => movies.length > 0 && setSelectedMovie(movies[0])}
             style={{
               backgroundColor: '#e50914',
               color: '#fff',
@@ -217,7 +242,7 @@ export const Home: React.FC = () => {
           gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
           gap: '24px'
         }}>
-          {MOCK_MOVIES.map(movie => (
+          {movies.map(movie => (
             <div
               key={movie.movieId}
               onClick={() => setSelectedMovie(movie)}

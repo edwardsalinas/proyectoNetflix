@@ -146,6 +146,16 @@ export const profileService = {
 };
 
 export const movieService = {
+  getMovies: async (): Promise<any[]> => {
+    try {
+      const response = await apiClient.get('/movies');
+      return response.data.items || response.data.movies || response.data || [];
+    } catch (err) {
+      console.warn("Falla al cargar catálogo de películas desde API:", err);
+      return [];
+    }
+  },
+
   getMovie: async (movieId: string): Promise<any> => {
     try {
       const response = await apiClient.get(`/movies/${movieId}`);
