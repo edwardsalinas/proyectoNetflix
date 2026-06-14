@@ -23,7 +23,9 @@ export const handler = async (event: any) => {
     let body;
     try {
       body = typeof event.body === 'string' ? JSON.parse(event.body) : event.body || {};
+
       console.log("createReview received body:", JSON.stringify(body));
+    
     } catch (parseError) {
       console.error("Failed to parse body:", event.body);
       throw new Error("Invalid JSON in request body");
