@@ -298,14 +298,20 @@ export const historyService = {
   getHistory: async (userId: string): Promise<{ movieId: string; currentTime: number; duration?: number; updatedAt?: string }[]> => {
     try {
       const response = await apiClient.get(`/users/${userId}/history`);
-      return response.data.items || response.data || [];
+      const items = response.data.items || response.data || [];
+      return items.map((item: any) => ({
+        movieId: item.movieId,
+        currentTime: item.progressSeconds || 0,
+        duration: item.duration || 0,
+        updatedAt: item.lastWatchedAt || item.updatedAt
+      }));
     } catch (err) {
       console.warn('Falla en API de historial, usando array vacío:', err);
       return [];
     }
   },
   updateProgress: async (userId: string, movieId: string, currentTime: number): Promise<void> => {
-    await apiClient.put(`/users/${userId}/history/${movieId}`, { currentTime });
+    await apiClient.put(`/users/${userId}/history/${movieId}`, { progressSeconds: Math.floor(currentTime) });
   }
 };
 

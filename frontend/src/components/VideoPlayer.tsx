@@ -120,7 +120,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, onClose
       if (video && video.currentTime > 0) {
         navigator.sendBeacon(
           `${import.meta.env.VITE_API_BASE_URL}/users/${userId}/history/${movie.movieId}`,
-          JSON.stringify({ currentTime: video.currentTime })
+          JSON.stringify({ progressSeconds: Math.floor(video.currentTime) })
         );
       }
     };
