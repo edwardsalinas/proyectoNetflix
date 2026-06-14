@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../auth/auth';
 import { useProfile } from '../context/ProfileContext';
 import { ReviewsSection } from '../components/ReviewsSection';
+import { movieService } from '../api/client';
 import { LogOut, User, Film, Play, Star, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -54,6 +55,18 @@ export const Home: React.FC = () => {
   const { activeProfile, clearActiveProfile } = useProfile();
   const navigate = useNavigate();
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
+  const [realMovieData, setRealMovieData] = useState<any>(null);
+
+  useEffect(() => {
+    if (selectedMovie) {
+      setRealMovieData(null);
+      movieService.getMovie(selectedMovie.movieId).then(data => {
+        if (data) {
+          setRealMovieData(data);
+        }
+      });
+    }
+  }, [selectedMovie]);
 
   const handleLogout = () => {
     logout({ logoutParams: { returnTo: window.location.origin } });
@@ -320,7 +333,9 @@ export const Home: React.FC = () => {
               <div style={{ display: 'flex', gap: '16px', fontSize: '14px', color: '#a1a1aa', marginBottom: '20px', alignItems: 'center' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#fff', fontWeight: 600 }}>
                   <Star size={14} fill="#e50914" color="#e50914" />
-                  {selectedMovie.rating}
+                  {realMovieData && realMovieData.rating !== undefined 
+                    ? `${realMovieData.rating} (${realMovieData.ratingCount || 0} votos)` 
+                    : selectedMovie.rating}
                 </span>
                 <span>{selectedMovie.duration}</span>
                 <span style={{ backgroundColor: 'rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '4px' }}>
