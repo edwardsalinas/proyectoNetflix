@@ -9,7 +9,31 @@ import { setTokenGetter } from './api/client';
 
 // Componente para decidir a dónde redirigir al usuario al ingresar
 const InitialRedirect: React.FC = () => {
-  const { activeProfile } = useProfile();
+  const { activeProfile, isLoadingProfiles } = useProfile();
+
+  // Esperar que los perfiles terminen de cargar antes de redirigir
+  // para evitar redirigir a /profiles cuando ya existe un perfil activo cacheado
+  if (isLoadingProfiles) {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        backgroundColor: '#0a0a0c'
+      }}>
+        <div style={{
+          width: '40px',
+          height: '40px',
+          border: '3px solid rgba(229, 9, 20, 0.2)',
+          borderTop: '3px solid #e50914',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite'
+        }} />
+        <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 
   if (!activeProfile) {
     return <Navigate to="/profiles" replace />;

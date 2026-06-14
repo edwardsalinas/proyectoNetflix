@@ -28,7 +28,7 @@ export const handler = async (event: any) => {
       throw new Error("Invalid JSON in request body");
     }
 
-    const { rating, reviewText } = body;
+    const { rating, reviewText, profileId, profileName } = body;
     if (rating === undefined || rating === null) {
       throw new Error("Validation: Missing rating in request body");
     }
@@ -65,6 +65,8 @@ export const handler = async (event: any) => {
       reviewId,
       movieId,
       userId: auth.userId,
+      profileId: profileId || "",
+      profileName: profileName || "",
       rating: ratingNum,
       reviewText: reviewText || "",
       createdAt: now,

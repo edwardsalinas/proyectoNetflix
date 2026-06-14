@@ -3,17 +3,19 @@ import { useProfile } from '../context/ProfileContext';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2, X } from 'lucide-react';
 import { DEFAULT_AVATARS } from '../api/client';
+import type { Profile } from '../api/client';
 
 export const ProfileSelection: React.FC = () => {
-  const { profiles, selectProfile, createProfile, deleteProfile } = useProfile();
+  const { profiles, selectProfile, createProfile, deleteProfile, isLoadingProfiles, profilesError } = useProfile();
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState(DEFAULT_AVATARS[0]);
   const [isEditMode, setIsEditMode] = useState(false);
   const [error, setError] = useState('');
+  const [deleteError, setDeleteError] = useState('');
   const navigate = useNavigate();
 
-  const handleSelect = (profile: any) => {
+  const handleSelect = (profile: Profile) => {
     if (isEditMode) return;
     selectProfile(profile);
     navigate('/home');
@@ -28,17 +30,48 @@ export const ProfileSelection: React.FC = () => {
       await createProfile(newName.trim(), selectedAvatar);
       setNewName('');
       setShowAddModal(false);
-    } catch (err: any) {
-      setError(err.message || 'Error al crear el perfil.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al crear el perfil.');
     }
   };
 
   const handleDelete = async (e: React.MouseEvent, profileId: string) => {
     e.stopPropagation();
+    setDeleteError('');
     if (window.confirm('¿Estás seguro de que quieres eliminar este perfil?')) {
-      await deleteProfile(profileId);
+      try {
+        await deleteProfile(profileId);
+      } catch (err: unknown) {
+        setDeleteError(err instanceof Error ? err.message : 'No se pudo eliminar el perfil.');
+      }
     }
   };
+
+  // Spinner de carga inicial
+  if (isLoadingProfiles) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        backgroundColor: '#0a0a0c',
+        gap: '20px'
+      }}>
+        <div style={{
+          width: '50px',
+          height: '50px',
+          border: '4px solid rgba(229, 9, 20, 0.2)',
+          borderTop: '4px solid #e50914',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite'
+        }} />
+        <p style={{ color: '#a1a1aa', fontSize: '16px' }}>Cargando perfiles...</p>
+        <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 
   return (
     <div style={{
@@ -60,6 +93,36 @@ export const ProfileSelection: React.FC = () => {
         WebkitBackgroundClip: 'text',
         WebkitTextFillColor: 'transparent'
       }}>¿Quién está viendo ahora?</h1>
+
+      {/* Error al cargar perfiles desde API */}
+      {profilesError && (
+        <div style={{
+          backgroundColor: 'rgba(229, 9, 20, 0.1)',
+          border: '1px solid #e50914',
+          color: '#f87171',
+          padding: '12px 20px',
+          borderRadius: '6px',
+          marginBottom: '24px',
+          fontSize: '14px',
+          maxWidth: '500px',
+          textAlign: 'center'
+        }}>{profilesError}</div>
+      )}
+
+      {/* Error al eliminar perfil */}
+      {deleteError && (
+        <div style={{
+          backgroundColor: 'rgba(229, 9, 20, 0.1)',
+          border: '1px solid #e50914',
+          color: '#f87171',
+          padding: '12px 20px',
+          borderRadius: '6px',
+          marginBottom: '24px',
+          fontSize: '14px',
+          maxWidth: '500px',
+          textAlign: 'center'
+        }}>{deleteError}</div>
+      )}
 
       <div style={{
         display: 'flex',
