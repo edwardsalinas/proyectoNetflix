@@ -32,10 +32,14 @@ export const handler = async (event: any) => {
     if (status === "COMPLETE") {
       console.log(`MediaConvert job completed for movie ${movieId}. Updating status...`);
 
-      // Update movie status to ready
+      const bucketTranscoded = process.env.BUCKET_TRANSCODED_VIDEOS || "transcoded-videos";
+      const posterUrl = `https://${bucketTranscoded}.s3.amazonaws.com/movies/${movieId}/thumbnails/thumb.0000000.jpg`;
+
+      // Update movie status to ready and register posterUrl
       const updatedMovie = {
         ...movieResult.Item,
         videoStatus: "ready",
+        posterUrl: movieResult.Item.posterUrl || posterUrl,
         updatedAt: new Date().toISOString(),
       };
 
@@ -47,7 +51,6 @@ export const handler = async (event: any) => {
       );
 
       // Register video assets
-      const bucketTranscoded = process.env.BUCKET_TRANSCODED_VIDEOS || "transcoded-videos";
       const qualities = ["480p", "720p", "1080p"];
 
       for (const quality of qualities) {

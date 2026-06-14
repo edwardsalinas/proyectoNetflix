@@ -75,6 +75,7 @@ export const handler = async (event: any) => {
 
         // Output destination: s3://<bucket>/movies/<movieId>/output
         const destination = `s3://${BUCKET_TRANSCODED_VIDEOS}/movies/${movieId}/output`;
+        const thumbnailDestination = `s3://${BUCKET_TRANSCODED_VIDEOS}/movies/${movieId}/thumbnails/thumb`;
 
         const createJobCommand = new CreateJobCommand({
           Role: MEDIACONVERT_ROLE_ARN,
@@ -161,40 +162,70 @@ export const handler = async (event: any) => {
                             Bitrate: 96000,
                             CodingMode: "CODING_MODE_2_0",
                             SampleRate: 48000,
+                          },
+                        },
+                      },
+                    ],
+                  },
+                  {
+                    NameModifier: "_480p",
+                    ContainerSettings: {
+                      Container: "M3U8",
+                    },
+                    VideoDescription: {
+                      Width: 854,
+                      Height: 480,
+                      CodecSettings: {
+                        Codec: "H_264",
+                        H264Settings: {
+                          Bitrate: 1000000,
+                          RateControlMode: "CBR",
+                          SceneChangeDetect: "ENABLED",
                         },
                       },
                     },
-                  ],
+                    AudioDescriptions: [
+                      {
+                        CodecSettings: {
+                          Codec: "AAC",
+                          AacSettings: {
+                            Bitrate: 96000,
+                            CodingMode: "CODING_MODE_2_0",
+                            SampleRate: 48000,
+                          },
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            {
+              CustomName: "Thumbnails",
+              Name: "File Group",
+              OutputGroupSettings: {
+                Type: "FILE_GROUP_SETTINGS",
+                FileGroupSettings: {
+                  Destination: thumbnailDestination,
                 },
+              },
+              Outputs: [
                 {
-                  NameModifier: "_480p",
                   ContainerSettings: {
-                    Container: "M3U8",
+                    Container: "RAW",
                   },
                   VideoDescription: {
-                    Width: 854,
-                    Height: 480,
+                    Width: 1280,
+                    Height: 720,
                     CodecSettings: {
-                      Codec: "H_264",
-                      H264Settings: {
-                        Bitrate: 1000000,
-                        RateControlMode: "CBR",
-                        SceneChangeDetect: "ENABLED",
+                      Codec: "FRAME_CAPTURE",
+                      FrameCaptureSettings: {
+                        FramerateNumerator: 1,
+                        FramerateDenominator: 5,
+                        MaxCaptures: 1,
+                        Quality: 80,
                       },
                     },
                   },
-                  AudioDescriptions: [
-                    {
-                      CodecSettings: {
-                        Codec: "AAC",
-                        AacSettings: {
-                          Bitrate: 96000,
-                          CodingMode: "CODING_MODE_2_0",
-                          SampleRate: 48000,
-                        },
-                      },
-                    },
-                  ],
                 },
               ],
             },
@@ -279,11 +310,12 @@ https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tear
           );
         }
 
-        // Update movie status in DynamoDB to "ready"
+        // Update movie status in DynamoDB to "ready" and add fallback poster URL
         console.log(`Updating movie status to ready in DynamoDB...`);
         const updatedMovie = {
           ...movieResult.Item,
           videoStatus: "ready",
+          posterUrl: movieResult.Item.posterUrl || "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=400&h=600&q=80",
           updatedAt: new Date().toISOString(),
         };
 
