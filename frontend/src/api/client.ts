@@ -296,39 +296,111 @@ export const streamingService = {
 
 export const historyService = {
   getHistory: async (userId: string, profileId: string): Promise<{ movieId: string; currentTime: number; duration: number }[]> => {
+    const localKey = `netflix_history_${userId}_${profileId}`;
+    const localData = localStorage.getItem(localKey);
+    if (localData) {
+      try {
+        return JSON.parse(localData);
+      } catch (e) {
+        console.error(e);
+      }
+    }
     try {
       const response = await apiClient.get(`/users/${userId}/history`, { params: { profileId } });
       const items = response.data.items || response.data || [];
-      return items.map((item: any) => ({
+      const mapped = items.map((item: any) => ({
         movieId: item.movieId,
         currentTime: item.progressSeconds ?? item.currentTime ?? 0,
         duration: item.duration || 60
       }));
+      localStorage.setItem(localKey, JSON.stringify(mapped));
+      return mapped;
     } catch (err) {
       console.warn('Error fetching history:', err);
       return [];
     }
   },
   updateProgress: async (userId: string, profileId: string, movieId: string, currentTime: number): Promise<void> => {
-    await apiClient.put(`/users/${userId}/history/${movieId}?profileId=${profileId}`, { progressSeconds: Math.round(currentTime) });
+    const localKey = `netflix_history_${userId}_${profileId}`;
+    let historyList: any[] = [];
+    try {
+      historyList = JSON.parse(localStorage.getItem(localKey) || '[]');
+    } catch (e) {
+      historyList = [];
+    }
+    const existingIndex = historyList.findIndex(h => h.movieId === movieId);
+    if (existingIndex > -1) {
+      historyList[existingIndex].currentTime = Math.round(currentTime);
+    } else {
+      historyList.push({
+        movieId,
+        currentTime: Math.round(currentTime),
+        duration: 148
+      });
+    }
+    localStorage.setItem(localKey, JSON.stringify(historyList));
+    try {
+      await apiClient.put(`/users/${userId}/history/${movieId}?profileId=${profileId}`, { progressSeconds: Math.round(currentTime) });
+    } catch (err) {
+      console.warn('Sync watch progress failed', err);
+    }
   }
 };
 
 export const userListService = {
   getUserList: async (userId: string, profileId: string): Promise<{ movieId: string; addedAt: string }[]> => {
+    const localKey = `netflix_list_${userId}_${profileId}`;
+    const localData = localStorage.getItem(localKey);
+    if (localData) {
+      try {
+        return JSON.parse(localData);
+      } catch (e) {
+        console.error(e);
+      }
+    }
     try {
       const response = await apiClient.get(`/users/${userId}/lists`, { params: { profileId } });
-      return response.data.items || response.data || [];
+      const items = response.data.items || response.data || [];
+      localStorage.setItem(localKey, JSON.stringify(items));
+      return items;
     } catch (err) {
       console.warn('Error fetching user list:', err);
       return [];
     }
   },
   addToList: async (userId: string, profileId: string, movieId: string): Promise<void> => {
-    await apiClient.post(`/users/${userId}/lists?profileId=${profileId}`, { movieId });
+    const localKey = `netflix_list_${userId}_${profileId}`;
+    let list: any[] = [];
+    try {
+      list = JSON.parse(localStorage.getItem(localKey) || '[]');
+    } catch (e) {
+      list = [];
+    }
+    if (!list.some(item => item.movieId === movieId)) {
+      list.push({ movieId, addedAt: new Date().toISOString() });
+    }
+    localStorage.setItem(localKey, JSON.stringify(list));
+    try {
+      await apiClient.post(`/users/${userId}/lists?profileId=${profileId}`, { movieId });
+    } catch (err) {
+      console.warn('Sync list add failed', err);
+    }
   },
   removeFromList: async (userId: string, profileId: string, movieId: string): Promise<void> => {
-    await apiClient.delete(`/users/${userId}/lists/${movieId}?profileId=${profileId}`);
+    const localKey = `netflix_list_${userId}_${profileId}`;
+    let list: any[] = [];
+    try {
+      list = JSON.parse(localStorage.getItem(localKey) || '[]');
+    } catch (e) {
+      list = [];
+    }
+    list = list.filter(item => item.movieId !== movieId);
+    localStorage.setItem(localKey, JSON.stringify(list));
+    try {
+      await apiClient.delete(`/users/${userId}/lists/${movieId}?profileId=${profileId}`);
+    } catch (err) {
+      console.warn('Sync list remove failed', err);
+    }
   }
 };
 export const reviewService = {
