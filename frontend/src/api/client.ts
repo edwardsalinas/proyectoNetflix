@@ -145,6 +145,18 @@ export const profileService = {
   }
 };
 
+export const movieService = {
+  getMovie: async (movieId: string): Promise<any> => {
+    try {
+      const response = await apiClient.get(`/movies/${movieId}`);
+      return response.data.movie || response.data;
+    } catch (err) {
+      console.warn(`Falla al cargar detalle de película ${movieId} desde API:`, err);
+      return null;
+    }
+  }
+};
+
 export const reviewService = {
   getReviews: async (movieId: string): Promise<Review[]> => {
     try {
