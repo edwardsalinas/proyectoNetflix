@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../auth/auth';
 import { useProfile } from '../context/ProfileContext';
 import { reviewService } from '../api/client';
 import type { Review } from '../api/client';
-import { Star, MessageSquare, AlertCircle } from 'lucide-react';
+import { Star, MessageSquare, AlertCircle, Trash2 } from 'lucide-react';
 
 interface ReviewsSectionProps {
   movieId: string;
@@ -17,24 +17,25 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({ movieId }) => {
   const [rating, setRating] = useState<number>(10);
   const [comment, setComment] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [error, setError] = useState('');
   
   const userId = user?.sub || 'anonymous_user';
   const profileId = activeProfile?.profileId || 'p1';
-  const profileName = activeProfile?.name || 'Edward';
+  const profileName = activeProfile?.name || 'Usuario';
 
-  const loadReviews = async () => {
+  const loadReviews = useCallback(async () => {
     try {
       const items = await reviewService.getReviews(movieId);
       setReviews(items);
     } catch (err) {
       console.error('Error loading reviews:', err);
     }
-  };
+  }, [movieId]);
 
   useEffect(() => {
     loadReviews();
-  }, [movieId]);
+  }, [loadReviews]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,10 +59,23 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({ movieId }) => {
       setComment('');
       setRating(10);
       await loadReviews();
-    } catch (err: any) {
-      setError(err.message || 'Error al enviar la reseña.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al enviar la reseña.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDelete = async (reviewId: string) => {
+    if (!window.confirm('¿Eliminar esta reseña?')) return;
+    setIsDeleting(reviewId);
+    try {
+      await reviewService.deleteReview(movieId, reviewId);
+      setReviews(prev => prev.filter(r => r.reviewId !== reviewId));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'No se pudo eliminar la reseña.');
+    } finally {
+      setIsDeleting(null);
     }
   };
 
@@ -238,27 +252,51 @@ export const ReviewsSection: React.FC<ReviewsSectionProps> = ({ movieId }) => {
                     fontWeight: 600,
                     fontSize: '15px',
                     color: '#f5f5f7'
-                  }}>{rev.profileName}</span>
+                  }}>{rev.profileName || rev.userId}</span>
                   <span style={{
                     fontSize: '12px',
                     color: '#71717a'
                   }}>{new Date(rev.createdAt).toLocaleDateString()}</span>
                 </div>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  backgroundColor: 'rgba(229, 9, 20, 0.1)',
-                  padding: '4px 10px',
-                  borderRadius: '20px',
-                  border: '1px solid rgba(229, 9, 20, 0.2)'
-                }}>
-                  <Star size={14} fill="#e50914" color="#e50914" />
-                  <span style={{
-                    color: '#f5f5f7',
-                    fontWeight: 700,
-                    fontSize: '13px'
-                  }}>{rev.rating}/10</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    backgroundColor: 'rgba(229, 9, 20, 0.1)',
+                    padding: '4px 10px',
+                    borderRadius: '20px',
+                    border: '1px solid rgba(229, 9, 20, 0.2)'
+                  }}>
+                    <Star size={14} fill="#e50914" color="#e50914" />
+                    <span style={{
+                      color: '#f5f5f7',
+                      fontWeight: 700,
+                      fontSize: '13px'
+                    }}>{rev.rating}/10</span>
+                  </div>
+                  {/* Botón eliminar: solo visible para el autor */}
+                  {rev.userId === userId && (
+                    <button
+                      onClick={() => handleDelete(rev.reviewId)}
+                      disabled={isDeleting === rev.reviewId}
+                      title="Eliminar reseña"
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: isDeleting === rev.reviewId ? '#52525b' : '#71717a',
+                        cursor: isDeleting === rev.reviewId ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '4px',
+                        transition: 'color 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => { if (isDeleting !== rev.reviewId) e.currentTarget.style.color = '#e50914'; }}
+                      onMouseLeave={(e) => { if (isDeleting !== rev.reviewId) e.currentTarget.style.color = '#71717a'; }}
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
                 </div>
               </div>
               <p style={{
