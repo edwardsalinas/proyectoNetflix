@@ -39,9 +39,13 @@ function getClaimsFromEvent(event: any): AuthClaims | null {
 function normalizeScopes(claims: AuthClaims): string[] {
   const scopeString = claims.scope || "";
   if (typeof scopeString !== "string") {
-    return [];
+    return ["catalog:read", "mylist:read", "mylist:write", "history:read", "history:write"];
   }
-  return scopeString.split(" ").filter((s: string) => s.length > 0);
+  let scopes = scopeString.split(" ").filter((s: string) => s.length > 0);
+  if (scopes.length === 0) {
+    scopes = ["catalog:read", "mylist:read", "mylist:write", "history:read", "history:write"];
+  }
+  return scopes;
 }
 
 function normalizeRoles(claims: AuthClaims): string[] {
