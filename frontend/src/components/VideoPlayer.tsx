@@ -35,7 +35,34 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, onClose
         if (!video) return;
 
         if (Hls.isSupported()) {
-          hls = new Hls();
+          const searchParams = new URL(session.url).search;
+
+          class CustomLoader extends Hls.DefaultConfig.loader {
+            constructor(config: any) {
+              super(config);
+            }
+            load(context: any, config: any, callbacks: any) {
+              if (context.url && searchParams) {
+                try {
+                  const urlObj = new URL(context.url);
+                  if (!urlObj.searchParams.has('Policy')) {
+                    const params = new URLSearchParams(searchParams);
+                    params.forEach((value, key) => {
+                      urlObj.searchParams.set(key, value);
+                    });
+                    context.url = urlObj.toString();
+                  }
+                } catch (e) {
+                  console.error('Error appending signature params to HLS request:', e);
+                }
+              }
+              super.load(context, config, callbacks);
+            }
+          }
+
+          hls = new Hls({
+            loader: CustomLoader as any
+          });
           hls.loadSource(session.url);
           hls.attachMedia(video);
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {

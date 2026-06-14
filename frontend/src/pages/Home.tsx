@@ -554,6 +554,33 @@ export const Home: React.FC = () => {
                   {selectedMovie.genre}
                 </span>
               </div>
+              
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'center', marginBottom: '25px' }}>
+                <button
+                  onClick={() => {
+                    setPlayingMovie(selectedMovie);
+                    setSelectedMovie(null);
+                  }}
+                  style={{
+                    backgroundColor: '#e50914',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '10px 24px',
+                    borderRadius: '6px',
+                    fontSize: '15px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: '0 4px 12px rgba(229, 9, 20, 0.3)',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <Play size={16} fill="#fff" /> Ver Ahora
+                </button>
+              </div>
+
               <p style={{ color: '#d4d4d8', fontSize: '16px', lineHeight: '1.6', marginBottom: '30px' }}>
                 {selectedMovie.description}
               </p>

@@ -177,6 +177,10 @@ interface ApiMovie {
   image?: string | null;
   thumbnailUrl?: string;
   bannerUrl?: string;
+  synopsis?: string;
+  durationMinutes?: number;
+  genreId?: string;
+  posterUrl?: string | null;
 }
 
 const MOCK_MOVIES_FALLBACK: Movie[] = [
@@ -230,11 +234,11 @@ const MOCK_MOVIES_FALLBACK: Movie[] = [
 const normalizeMovie = (raw: ApiMovie): Movie => ({
   movieId: raw.movieId || raw.id || '',
   title: raw.title || raw.name || '',
-  description: raw.description || raw.overview || raw.summary || '',
+  description: raw.description || raw.overview || raw.summary || raw.synopsis || '',
   rating: raw.rating ?? raw.score ?? raw.vote_average ?? 0,
-  duration: raw.duration || (raw.runtime ? `${raw.runtime} min` : '') || raw.length || '',
-  genre: raw.genre || (raw.genres ? raw.genres.join(' / ') : '') || raw.category || '',
-  poster: raw.poster ?? raw.poster_path ?? raw.image ?? raw.thumbnailUrl ?? raw.bannerUrl ?? null,
+  duration: raw.duration || (raw.runtime ? `${raw.runtime} min` : '') || raw.length || (raw.durationMinutes ? `${raw.durationMinutes} min` : '') || '',
+  genre: raw.genre || (raw.genres ? raw.genres.join(' / ') : '') || raw.category || raw.genreId || '',
+  poster: raw.poster ?? raw.poster_path ?? raw.image ?? raw.thumbnailUrl ?? raw.bannerUrl ?? raw.posterUrl ?? null,
 });
 
 const extractMovies = (data: unknown): Movie[] => {
@@ -284,7 +288,9 @@ export const movieService = {
 export const streamingService = {
   createSession: async (movieId: string): Promise<{ url: string }> => {
     const response = await apiClient.post('/streaming/sessions', { movieId });
-    return response.data;
+    return {
+      url: response.data.signedUrl || response.data.url
+    };
   }
 };
 
