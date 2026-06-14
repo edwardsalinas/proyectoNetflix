@@ -108,6 +108,36 @@ export const handler = async (event: any) => {
                 },
                 Outputs: [
                   {
+                    NameModifier: "_2160p",
+                    ContainerSettings: {
+                      Container: "M3U8",
+                    },
+                    VideoDescription: {
+                      Width: 3840,
+                      Height: 2160,
+                      CodecSettings: {
+                        Codec: "H_264",
+                        H264Settings: {
+                          Bitrate: 15000000,
+                          RateControlMode: "CBR",
+                          SceneChangeDetect: "ENABLED",
+                        },
+                      },
+                    },
+                    AudioDescriptions: [
+                      {
+                        CodecSettings: {
+                          Codec: "AAC",
+                          AacSettings: {
+                            Bitrate: 192000,
+                            CodingMode: "CODING_MODE_2_0",
+                            SampleRate: 48000,
+                          },
+                        },
+                      },
+                    ],
+                  },
+                  {
                     NameModifier: "_1080p",
                     ContainerSettings: {
                       Container: "M3U8",
@@ -282,7 +312,7 @@ https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tear
         );
 
         // Register video asset qualities and upload sub-playlists
-        const qualities = ["480p", "720p", "1080p"];
+        const qualities = ["480p", "720p", "1080p", "2160p"];
         for (const quality of qualities) {
           const subPlaylistKey = `movies/${movieId}/output_${quality}.m3u8`;
           
@@ -303,7 +333,7 @@ https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tear
                 quality,
                 hlsPlaylistUrl: `https://${BUCKET_TRANSCODED_VIDEOS}.s3.amazonaws.com/${subPlaylistKey}`,
                 fileSizeBytes: 3114374, // size of real file
-                bitrateKbps: quality === "1080p" ? 5000 : quality === "720p" ? 2500 : 1000,
+                bitrateKbps: quality === "2160p" ? 15000 : quality === "1080p" ? 5000 : quality === "720p" ? 2500 : 1000,
                 createdAt: new Date().toISOString(),
               },
             })

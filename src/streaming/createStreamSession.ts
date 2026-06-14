@@ -97,7 +97,10 @@ export const handler = async (event: any) => {
     }
 
     // 2. Determine video quality
-    const quality = preferredQuality || "1080p";
+    let quality = preferredQuality || "1080p";
+    if (quality === "4k") {
+      quality = "2160p";
+    }
 
     // 3. Retrieve actual HLS playlist URL from DynamoDB video_assets if registered
     let playlistUrl = "";
