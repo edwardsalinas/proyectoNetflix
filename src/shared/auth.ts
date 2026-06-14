@@ -22,7 +22,11 @@ export function getAuthContext(event: any): AuthContext {
 
   if (claims && (claims.sub || claims.principalId)) {
     const scopeString = claims.scope || "";
-    const scopes = scopeString.split(" ").filter((s: string) => s.length > 0);
+    let scopes = scopeString.split(" ").filter((s: string) => s.length > 0);
+    if (scopes.length === 0) {
+      // Cognito User Pool fallback: grant standard viewer scopes to authenticated users
+      scopes = ["catalog:read", "mylist:read", "mylist:write", "history:read", "history:write"];
+    }
     const roles = claims["https://netflix-clone.com/roles"] || claims.roles || [];
     return {
       userId: claims.sub || claims.principalId,
