@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/auth';
 import { adminService } from '../api/client';
 import type { CreateMovieInput, Movie } from '../api/client';
-import { LogOut, Settings, Plus, Edit2, Trash2, X, AlertCircle, CheckCircle, Clock, Copy } from 'lucide-react';
+import { LogOut, Settings, Plus, Edit2, Trash2, X, AlertCircle, CheckCircle, Copy } from 'lucide-react';
 
 // Extend Movie with admin fields
 interface AdminMovie extends Movie {
@@ -30,6 +30,7 @@ const VALID_GENRES = [
 ];
 
 interface FormData extends CreateMovieInput {
+  videoStatus?: 'pending' | 'transcoding' | 'ready';
 }
 
 interface ConfirmDialog {
@@ -56,7 +57,8 @@ export const Admin: React.FC = () => {
     genreId: 'action',
     director: '',
     releaseYear: new Date().getFullYear(),
-    durationMinutes: 120
+    durationMinutes: 120,
+    videoStatus: 'pending'
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog>({ isOpen: false });
@@ -123,7 +125,8 @@ export const Admin: React.FC = () => {
         genreId: 'action',
         director: '',
         releaseYear: new Date().getFullYear(),
-        durationMinutes: 120
+        durationMinutes: 120,
+        videoStatus: 'pending'
       });
     } catch (err: any) {
       console.error('Error al guardar película:', err);
@@ -139,10 +142,23 @@ export const Admin: React.FC = () => {
       genreId: movie.genreId || 'action',
       director: movie.director || '',
       releaseYear: movie.releaseYear || new Date().getFullYear(),
-      durationMinutes: movie.durationMinutes || 120
+      durationMinutes: movie.durationMinutes || 120,
+      videoStatus: movie.videoStatus || 'pending'
     });
     setShowForm(true);
     setFormErrors({});
+  };
+
+  const handleStatusChange = async (movie: AdminMovie, newStatus: 'pending' | 'transcoding' | 'ready') => {
+    // Actualización optimista
+    setMovies(prev => prev.map(m => m.movieId === movie.movieId ? { ...m, videoStatus: newStatus } : m));
+    try {
+      await adminService.updateMovieStatus(movie.movieId, newStatus);
+    } catch (err) {
+      // Revertir si falla
+      setMovies(prev => prev.map(m => m.movieId === movie.movieId ? { ...m, videoStatus: movie.videoStatus } : m));
+      console.error('Error al cambiar estado:', err);
+    }
   };
 
   const handleDeleteClick = (movie: AdminMovie) => {
@@ -169,49 +185,6 @@ export const Admin: React.FC = () => {
     logout({ logoutParams: { returnTo: window.location.origin } });
   };
 
-  const getVideoStatusBadge = (status?: string) => {
-    const bgColor = 
-      status === 'ready' ? 'rgba(34, 197, 94, 0.1)' :
-      status === 'transcoding' ? 'rgba(234, 179, 8, 0.1)' :
-      'rgba(107, 114, 128, 0.1)';
-
-    const borderColor =
-      status === 'ready' ? 'rgba(34, 197, 94, 0.3)' :
-      status === 'transcoding' ? 'rgba(234, 179, 8, 0.3)' :
-      'rgba(107, 114, 128, 0.3)';
-
-    const textColor =
-      status === 'ready' ? '#22c55e' :
-      status === 'transcoding' ? '#eab308' :
-      '#6b7280';
-
-    const icon = 
-      status === 'ready' ? <CheckCircle size={14} /> :
-      status === 'transcoding' ? <Clock size={14} /> :
-      null;
-
-    const label = status === 'ready' ? 'Listo' : status === 'transcoding' ? 'Transcodificando' : 'Pendiente';
-
-    return (
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '4px',
-        padding: '4px 8px',
-        backgroundColor: bgColor,
-        border: `1px solid ${borderColor}`,
-        borderRadius: '4px',
-        fontSize: '11px',
-        color: textColor,
-        fontWeight: 600,
-        whiteSpace: 'nowrap'
-      }}>
-        {icon}
-        {label}
-      </div>
-    );
-  };
-
   const handleOpenNewForm = () => {
     setEditingMovie(null);
     setFormData({
@@ -220,7 +193,8 @@ export const Admin: React.FC = () => {
       genreId: 'action',
       director: '',
       releaseYear: new Date().getFullYear(),
-      durationMinutes: 120
+      durationMinutes: 120,
+      videoStatus: 'pending'
     });
     setFormErrors({});
     setShowForm(true);
@@ -399,7 +373,41 @@ export const Admin: React.FC = () => {
                     <td style={{ padding: '12px' }}>{movie.releaseYear || '–'}</td>
                     <td style={{ padding: '12px' }}>{movie.durationMinutes ? `${movie.durationMinutes} min` : '–'}</td>
                     <td style={{ padding: '12px' }}>
-                      {getVideoStatusBadge(movie.videoStatus)}
+                      <select
+                        value={movie.videoStatus || 'pending'}
+                        onChange={(e) => handleStatusChange(movie, e.target.value as 'pending' | 'transcoding' | 'ready')}
+                        style={{
+                          backgroundColor:
+                            movie.videoStatus === 'ready' ? 'rgba(34, 197, 94, 0.15)' :
+                            movie.videoStatus === 'transcoding' ? 'rgba(234, 179, 8, 0.15)' :
+                            'rgba(107, 114, 128, 0.15)',
+                          border: `1px solid ${
+                            movie.videoStatus === 'ready' ? 'rgba(34, 197, 94, 0.4)' :
+                            movie.videoStatus === 'transcoding' ? 'rgba(234, 179, 8, 0.4)' :
+                            'rgba(107, 114, 128, 0.4)'
+                          }`,
+                          color:
+                            movie.videoStatus === 'ready' ? '#22c55e' :
+                            movie.videoStatus === 'transcoding' ? '#eab308' :
+                            '#9ca3af',
+                          borderRadius: '4px',
+                          padding: '4px 6px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          cursor: 'pointer',
+                          outline: 'none',
+                          appearance: 'none',
+                          WebkitAppearance: 'none',
+                          paddingRight: '20px',
+                          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b7280'/%3E%3C/svg%3E")`,
+                          backgroundRepeat: 'no-repeat',
+                          backgroundPosition: 'right 5px center'
+                        }}
+                      >
+                        <option value="pending" style={{ backgroundColor: '#1a1a1a', color: '#9ca3af' }}>Pendiente</option>
+                        <option value="transcoding" style={{ backgroundColor: '#1a1a1a', color: '#eab308' }}>Transcodificando</option>
+                        <option value="ready" style={{ backgroundColor: '#1a1a1a', color: '#22c55e' }}>Listo</option>
+                      </select>
                     </td>
                     <td style={{ padding: '12px' }}>
                       <div style={{ display: 'flex', gap: '8px' }}>
@@ -724,6 +732,45 @@ export const Admin: React.FC = () => {
                 />
                 {formErrors.durationMinutes && <p style={{ fontSize: '11px', color: '#ef4444', margin: '4px 0 0 0' }}>{formErrors.durationMinutes}</p>}
               </div>
+
+              {/* Estado de Video (solo al editar) */}
+              {editingMovie && (
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, marginBottom: '6px', color: '#a1a1aa' }}>
+                    Estado de Video
+                  </label>
+                  <select
+                    value={formData.videoStatus || 'pending'}
+                    onChange={(e) => setFormData({ ...formData, videoStatus: e.target.value as 'pending' | 'transcoding' | 'ready' })}
+                    style={{
+                      width: '100%',
+                      backgroundColor:
+                        formData.videoStatus === 'ready' ? 'rgba(34, 197, 94, 0.08)' :
+                        formData.videoStatus === 'transcoding' ? 'rgba(234, 179, 8, 0.08)' :
+                        'rgba(255, 255, 255, 0.05)',
+                      border: `1px solid ${
+                        formData.videoStatus === 'ready' ? 'rgba(34, 197, 94, 0.3)' :
+                        formData.videoStatus === 'transcoding' ? 'rgba(234, 179, 8, 0.3)' :
+                        'rgba(255, 255, 255, 0.1)'
+                      }`,
+                      borderRadius: '6px',
+                      padding: '10px',
+                      color:
+                        formData.videoStatus === 'ready' ? '#22c55e' :
+                        formData.videoStatus === 'transcoding' ? '#eab308' :
+                        '#9ca3af',
+                      fontSize: '14px',
+                      fontWeight: 600,
+                      boxSizing: 'border-box',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <option value="pending" style={{ backgroundColor: '#1a1a1a', color: '#9ca3af' }}>⏳ Pendiente</option>
+                    <option value="transcoding" style={{ backgroundColor: '#1a1a1a', color: '#eab308' }}>⚙️ Transcodificando</option>
+                    <option value="ready" style={{ backgroundColor: '#1a1a1a', color: '#22c55e' }}>✅ Listo</option>
+                  </select>
+                </div>
+              )}
 
               {formErrors.submit && (
                 <div style={{

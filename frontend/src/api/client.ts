@@ -181,6 +181,9 @@ interface ApiMovie {
   durationMinutes?: number;
   genreId?: string;
   posterUrl?: string | null;
+  director?: string;
+  releaseYear?: number;
+  videoStatus?: 'pending' | 'transcoding' | 'ready';
 }
 
 const MOCK_MOVIES_FALLBACK: Movie[] = [
@@ -239,6 +242,17 @@ const normalizeMovie = (raw: ApiMovie): Movie => ({
   duration: raw.duration || (raw.runtime ? `${raw.runtime} min` : '') || raw.length || (raw.durationMinutes ? `${raw.durationMinutes} min` : '') || '',
   genre: raw.genre || (raw.genres ? raw.genres.join(' / ') : '') || raw.category || raw.genreId || '',
   poster: raw.poster ?? raw.poster_path ?? raw.image ?? raw.thumbnailUrl ?? raw.bannerUrl ?? raw.posterUrl ?? null,
+});
+
+const normalizeAdminMovie = (raw: ApiMovie): AdminMovie => ({
+  ...normalizeMovie(raw),
+  director: raw.director,
+  releaseYear: raw.releaseYear,
+  durationMinutes: raw.durationMinutes,
+  genreId: raw.genreId || raw.genre || raw.category,
+  videoStatus: raw.videoStatus || 'pending',
+  posterUrl: raw.posterUrl ?? raw.poster_path ?? raw.image ?? raw.thumbnailUrl ?? raw.bannerUrl ?? null,
+  synopsis: raw.synopsis || raw.description || raw.overview || raw.summary || '',
 });
 
 const extractMovies = (data: unknown): Movie[] => {
@@ -486,11 +500,27 @@ export const adminService = {
   getAllMovies: async (): Promise<AdminMovie[]> => {
     try {
       const response = await apiClient.get('/movies');
-      const list = extractMovies(response.data) as AdminMovie[];
-      return list;
+      const data = response.data;
+      let rawList: ApiMovie[] = [];
+      if (Array.isArray(data)) {
+        rawList = data;
+      } else if (data && typeof data === 'object') {
+        const obj = data as Record<string, unknown>;
+        rawList = (obj.items as ApiMovie[]) || (obj.data as ApiMovie[]) || (obj.results as ApiMovie[]) || [];
+      }
+      return rawList.map(normalizeAdminMovie);
     } catch (err) {
       console.error('Error al obtener películas para admin:', err);
       return [];
+    }
+  },
+
+  updateMovieStatus: async (movieId: string, videoStatus: 'pending' | 'transcoding' | 'ready'): Promise<void> => {
+    try {
+      await apiClient.put(`/movies/${movieId}`, { videoStatus });
+    } catch (err) {
+      console.error('Error al actualizar estado de película:', err);
+      throw err;
     }
   },
 
