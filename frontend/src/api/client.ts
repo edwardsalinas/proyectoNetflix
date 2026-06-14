@@ -180,6 +180,7 @@ export const reviewService = {
     try {
       const response = await apiClient.post(`/movies/${movieId}/reviews`, {
         profileId,
+        profileName,
         rating,
         reviewText: comment,
       });
