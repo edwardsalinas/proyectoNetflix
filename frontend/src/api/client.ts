@@ -24,7 +24,7 @@ apiClient.interceptors.request.use(
           config.headers.Authorization = `Bearer ${token}`;
         }
       } catch (err) {
-        console.error('Error fetching Auth0 token for API request:', err);
+        console.error('Error fetching access token for API request:', err);
       }
     }
     return config;
@@ -53,6 +53,18 @@ export interface Review {
   createdAt: string;
 }
 
+interface ApiReview {
+  reviewId?: string;
+  movieId?: string;
+  userId?: string;
+  profileId?: string;
+  profileName?: string;
+  rating?: number;
+  comment?: string;
+  reviewText?: string;
+  createdAt?: string;
+}
+
 // Avatars predefinidos estilo Netflix
 export const DEFAULT_AVATARS = [
   'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&h=150&q=80',
@@ -61,26 +73,6 @@ export const DEFAULT_AVATARS = [
   'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=150&h=150&q=80',
   'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=150&h=150&q=80',
 ];
-
-// Iniciar perfiles por defecto en LocalStorage si no existen
-const getLocalProfiles = (userId: string): Profile[] => {
-  const key = `netflix_profiles_${userId}`;
-  const stored = localStorage.getItem(key);
-  if (stored) return JSON.parse(stored);
-
-  const defaults: Profile[] = [
-    { profileId: 'p1', name: 'Edward', avatarUrl: DEFAULT_AVATARS[0] },
-    { profileId: 'p2', name: 'Richard', avatarUrl: DEFAULT_AVATARS[1] },
-    { profileId: 'p3', name: 'Jorge', avatarUrl: DEFAULT_AVATARS[2] },
-    { profileId: 'p4', name: 'Estiven', avatarUrl: DEFAULT_AVATARS[3] },
-  ];
-  localStorage.setItem(key, JSON.stringify(defaults));
-  return defaults;
-};
-
-const saveLocalProfiles = (userId: string, profiles: Profile[]) => {
-  localStorage.setItem(`netflix_profiles_${userId}`, JSON.stringify(profiles));
-};
 
 const getLocalReviews = (movieId: string): Review[] => {
   const key = `netflix_reviews_${movieId}`;
@@ -120,47 +112,36 @@ const addLocalReview = (movieId: string, review: Review) => {
   localStorage.setItem(`netflix_reviews_${movieId}`, JSON.stringify(reviews));
 };
 
+const normalizeReview = (raw: ApiReview, fallbackMovieId: string): Review => {
+  return {
+    reviewId: raw.reviewId || `rev_${Math.random().toString(36).substring(2, 9)}`,
+    movieId: raw.movieId || fallbackMovieId,
+    userId: raw.userId || 'anonymous_user',
+    profileId: raw.profileId || 'profile_unknown',
+    profileName: raw.profileName || raw.userId || 'Usuario',
+    rating: typeof raw.rating === 'number' ? raw.rating : 0,
+    comment: raw.comment || raw.reviewText || '',
+    createdAt: raw.createdAt || new Date().toISOString(),
+  };
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // METODOS DEL CLIENTE CON FALLBACK MOCK
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const profileService = {
   getProfiles: async (userId: string): Promise<Profile[]> => {
-    try {
-      const response = await apiClient.get(`/users/${userId}/profiles`);
-      return response.data.items || response.data;
-    } catch (err) {
-      console.warn('Falla en la API de perfiles, utilizando fallback local:', err);
-      return getLocalProfiles(userId);
-    }
+    const response = await apiClient.get(`/users/${userId}/profiles`);
+    return response.data.items || response.data;
   },
 
   createProfile: async (userId: string, name: string, avatarUrl: string): Promise<Profile> => {
-    const newProfile = { profileId: 'p_' + Math.random().toString(36).substring(2, 9), name, avatarUrl };
-    try {
-      const response = await apiClient.post(`/users/${userId}/profiles`, { name, avatarUrl });
-      return response.data.profile || response.data;
-    } catch (err) {
-      console.warn('Falla en creación de perfil por API, utilizando fallback local:', err);
-      const list = getLocalProfiles(userId);
-      if (list.length >= 5) {
-        throw new Error('Límite máximo de 5 perfiles alcanzado.');
-      }
-      list.push(newProfile);
-      saveLocalProfiles(userId, list);
-      return newProfile;
-    }
+    const response = await apiClient.post(`/users/${userId}/profiles`, { name, avatarUrl });
+    return response.data.profile || response.data;
   },
 
   deleteProfile: async (userId: string, profileId: string): Promise<void> => {
-    try {
-      await apiClient.delete(`/users/${userId}/profiles/${profileId}`);
-    } catch (err) {
-      console.warn('Falla al borrar perfil por API, actualizando fallback local:', err);
-      const list = getLocalProfiles(userId);
-      const filtered = list.filter(p => p.profileId !== profileId);
-      saveLocalProfiles(userId, filtered);
-    }
+    await apiClient.delete(`/users/${userId}/profiles/${profileId}`);
   }
 };
 
@@ -168,7 +149,9 @@ export const reviewService = {
   getReviews: async (movieId: string): Promise<Review[]> => {
     try {
       const response = await apiClient.get(`/movies/${movieId}/reviews`);
-      return response.data.items || response.data;
+      const payload = response.data.items || response.data;
+      const list = Array.isArray(payload) ? payload : [];
+      return list.map((item: ApiReview) => normalizeReview(item, movieId));
     } catch (err) {
       console.warn('Falla en la API de reseñas, utilizando fallback local:', err);
       return getLocalReviews(movieId);
@@ -198,9 +181,9 @@ export const reviewService = {
       const response = await apiClient.post(`/movies/${movieId}/reviews`, {
         profileId,
         rating,
-        comment,
+        reviewText: comment,
       });
-      return response.data.review || response.data;
+      return normalizeReview((response.data.review || response.data) as ApiReview, movieId);
     } catch (err) {
       console.warn('Falla en publicación de reseña por API, utilizando fallback local:', err);
       addLocalReview(movieId, newReview);

@@ -53,13 +53,37 @@ const generateChallenge = async (verifier: string) => {
   return base64urlencode(hashed);
 };
 
+const base64UrlEncodeJson = (value: unknown) => {
+  const json = JSON.stringify(value);
+  const base64 = btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return base64;
+};
+
+const createMockJwt = () => {
+  const header = { alg: 'none', typ: 'JWT' };
+  const exp = Math.floor(Date.now() / 1000) + 60 * 60;
+  const payload = {
+    sub: 'cognito|mockuser12345',
+    email: 'invitado@netflix-clone.com',
+    username: 'mockuser12345',
+    scope: 'openid profile email catalog:read catalog:write mylist:read mylist:write history:read history:write',
+    roles: ['super_admin'],
+    exp,
+    iat: Math.floor(Date.now() / 1000),
+  };
+
+  return `${base64UrlEncodeJson(header)}.${base64UrlEncodeJson(payload)}.`;
+};
+
 // Configuración de Cognito
 const getCognitoConfig = () => {
+  const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   return {
     domain: import.meta.env.VITE_COGNITO_DOMAIN || '', // ej: netflix-clone.auth.us-east-1.amazoncognito.com
     clientId: import.meta.env.VITE_COGNITO_CLIENT_ID || '',
-    redirectUri: window.location.origin,
+    redirectUri: isLocal ? 'http://localhost:5173' : (import.meta.env.VITE_COGNITO_REDIRECT_URI || 'https://d33whrv9c8h9sn.cloudfront.net'),
     region: import.meta.env.VITE_COGNITO_REGION || 'us-east-1',
+    scopes: import.meta.env.VITE_COGNITO_SCOPES || 'openid profile email',
   };
 };
 
@@ -105,6 +129,8 @@ const CognitoAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const exchangeStarted = React.useRef(false);
+
   useEffect(() => {
     const handleAuth = async () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -113,6 +139,9 @@ const CognitoAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const idToken = localStorage.getItem('netflix_cognito_id_token');
 
       if (code) {
+        if (exchangeStarted.current) return;
+        exchangeStarted.current = true;
+
         // Intercambiar código por tokens (PKCE)
         setIsLoading(true);
         const codeVerifier = localStorage.getItem('netflix_pkce_verifier') || '';
@@ -132,7 +161,9 @@ const CognitoAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
 
           if (!response.ok) {
-            throw new Error('Error al intercambiar el código de autorización por tokens');
+            const errorData = await response.text();
+            console.error('Cognito token exchange failed:', response.status, errorData);
+            throw new Error(`Error al intercambiar el código de autorización por tokens: ${response.status} - ${errorData}`);
           }
 
           const data = await response.json();
@@ -186,7 +217,9 @@ const CognitoAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem('netflix_redirect_return_to', options.appState.returnTo);
     }
 
-    const authUrl = `https://${config.domain}/login?response_type=code&client_id=${config.clientId}&redirect_uri=${encodeURIComponent(config.redirectUri)}&code_challenge=${challenge}&code_challenge_method=S256`;
+
+    const authUrl = `https://${config.domain}/oauth2/authorize?response_type=code&client_id=${config.clientId}&redirect_uri=${encodeURIComponent(config.redirectUri)}&code_challenge=${challenge}&code_challenge_method=S256&scope=openid+email+profile`;
+
     window.location.href = authUrl;
   };
 
@@ -203,7 +236,7 @@ const CognitoAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const getAccessTokenSilently = async () => {
-    const token = localStorage.getItem('netflix_cognito_access_token');
+    const token = localStorage.getItem('netflix_cognito_id_token');
     if (!token) throw new Error('No se encontró token activo');
     return token;
   };
@@ -261,7 +294,7 @@ const MockAuthProvider: React.FC<{ children: React.ReactNode }> = ({ children })
   };
 
   const getAccessTokenSilently = async () => {
-    return 'mock_jwt_token_for_local_testing_purposes';
+    return createMockJwt();
   };
 
   const mockUser: AuthUser = {

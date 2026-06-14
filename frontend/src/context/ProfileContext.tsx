@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useAuth0 } from '@auth0/auth0-react';
+import { useAuth } from '../auth/auth';
 import { profileService } from '../api/client';
 import type { Profile } from '../api/client';
 
@@ -10,16 +10,18 @@ interface ProfileContextType {
   createProfile: (name: string, avatarUrl: string) => Promise<Profile>;
   deleteProfile: (profileId: string) => Promise<void>;
   isLoadingProfiles: boolean;
+  profilesError: string | null;
   clearActiveProfile: () => void;
 }
 
 const ProfileContext = createContext<ProfileContextType | undefined>(undefined);
 
 export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, isAuthenticated } = useAuth0();
+  const { user, isAuthenticated } = useAuth();
   const [activeProfile, setActiveProfile] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [isLoadingProfiles, setIsLoadingProfiles] = useState<boolean>(false);
+  const [profilesError, setProfilesError] = useState<string | null>(null);
 
   const userId = user?.sub || 'anonymous_user';
 
@@ -28,6 +30,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (isAuthenticated) {
       const loadProfiles = async () => {
         setIsLoadingProfiles(true);
+        setProfilesError(null);
         try {
           const items = await profileService.getProfiles(userId);
           setProfiles(items);
@@ -42,6 +45,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
         } catch (err) {
           console.error('Error loading profiles:', err);
+          setProfilesError('No se pudieron cargar los perfiles. Verifica tu conexión e intenta de nuevo.');
         } finally {
           setIsLoadingProfiles(false);
         }
@@ -50,6 +54,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } else {
       setActiveProfile(null);
       setProfiles([]);
+      setProfilesError(null);
     }
   }, [isAuthenticated, userId]);
 
@@ -89,6 +94,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
       createProfile,
       deleteProfile,
       isLoadingProfiles,
+      profilesError,
       clearActiveProfile
     }}>
       {children}
