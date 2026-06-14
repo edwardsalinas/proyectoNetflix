@@ -7,10 +7,12 @@ import { X } from 'lucide-react';
 interface VideoPlayerProps {
   movie: Movie;
   userId: string;
+  profileId: string;
   onClose: () => void;
+  initialTime?: number;
 }
 
-export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, onClose }) => {
+export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, profileId, onClose, initialTime }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastReportedRef = useRef(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -19,11 +21,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, onClose
     if (Math.abs(currentTime - lastReportedRef.current) < 1) return;
     lastReportedRef.current = currentTime;
     try {
-      await historyService.updateProgress(userId, movie.movieId, currentTime);
+      await historyService.updateProgress(userId, profileId, movie.movieId, currentTime);
     } catch {
       /* silent */
     }
-  }, [userId, movie.movieId]);
+  }, [userId, profileId, movie.movieId]);
 
   useEffect(() => {
     let hls: Hls | null = null;
@@ -33,6 +35,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, onClose
         const session = await streamingService.createSession(movie.movieId);
         const video = videoRef.current;
         if (!video) return;
+
+        if (initialTime) {
+          lastReportedRef.current = initialTime;
+        }
 
         if (Hls.isSupported()) {
           const searchParams = new URL(session.url).search;
@@ -65,10 +71,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, onClose
           });
           hls.loadSource(session.url);
           hls.attachMedia(video);
+          hls.on(Hls.Events.MANIFEST_PARSED, () => {
+            if (initialTime) {
+              video.currentTime = initialTime;
+            }
+          });
         } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
           video.src = session.url;
+          if (initialTime) {
+            const setTime = () => {
+              video.currentTime = initialTime;
+              video.removeEventListener('loadedmetadata', setTime);
+            };
+            video.addEventListener('loadedmetadata', setTime);
+          }
         }
-      } catch {
+      } catch (err) {
         /* silent */
       }
     };
@@ -102,8 +120,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, onClose
       const video = videoRef.current;
       if (video && video.currentTime > 0) {
         navigator.sendBeacon(
-          `${import.meta.env.VITE_API_BASE_URL}/users/${userId}/history/${movie.movieId}`,
-          JSON.stringify({ currentTime: video.currentTime })
+          `${import.meta.env.VITE_API_BASE_URL}/users/${userId}/history/${movie.movieId}?profileId=${profileId}`,
+          JSON.stringify({ progressSeconds: Math.round(video.currentTime) })
         );
       }
     };
@@ -112,10 +130,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, onClose
       window.removeEventListener('beforeunload', onBeforeUnload);
       const video = videoRef.current;
       if (video && video.currentTime > 0) {
-        historyService.updateProgress(userId, movie.movieId, video.currentTime);
+        historyService.updateProgress(userId, profileId, movie.movieId, video.currentTime);
       }
     };
-  }, [userId, movie.movieId]);
+  }, [userId, profileId, movie.movieId]);
 
   return (
     <div

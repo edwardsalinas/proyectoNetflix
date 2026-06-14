@@ -106,3 +106,13 @@ button, input, textarea {
   box-shadow: 0 0 20px hsla(var(--red-netflix-raw) / 0.5);
   border-color: var(--red-netflix);
 }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .5; }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
