@@ -1,81 +1,48 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../auth/auth';
 import { useProfile } from '../context/ProfileContext';
 import { ReviewsSection } from '../components/ReviewsSection';
-import { movieService } from '../api/client';
-import { LogOut, User, Film, Play, Star, X } from 'lucide-react';
+import { VideoPlayer } from '../components/VideoPlayer';
+import { LogOut, User, Film, Play, Star, X, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { movieService } from '../api/client';
+import type { Movie } from '../api/client';
 
-interface Movie {
-  movieId: string;
-  title: string;
-  description: string;
-  rating: number;
-  duration: string;
-  genre: string;
-  bannerUrl: string;
-  thumbnailUrl: string;
-}
-
-const MOCK_MOVIES: Movie[] = [
-  {
-    movieId: 'm1',
-    title: 'Stranger Things',
-    description: 'Cuando un niño desaparece, sus amigos, una madre y un jefe de policía deben enfrentarse a fuerzas terroríficas para recuperarlo.',
-    rating: 8.7,
-    duration: '45 min',
-    genre: 'Sci-Fi / Drama',
-    bannerUrl: 'https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=1200&h=500&q=80',
-    thumbnailUrl: 'https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=300&h=180&q=80',
-  },
-  {
-    movieId: 'm2',
-    title: 'The Witcher',
-    description: 'Geralt de Rivia, un cazador de monstruos mutante, viaja hacia su destino en un mundo turbulento donde las personas a menudo demuestran ser más perversas que las bestias.',
-    rating: 8.1,
-    duration: '60 min',
-    genre: 'Fantasía / Acción',
-    bannerUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&h=500&q=80',
-    thumbnailUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=300&h=180&q=80',
-  },
-  {
-    movieId: 'm3',
-    title: 'Cobra Kai',
-    description: 'Treinta y cuatro años después de los eventos del torneo de karate de All Valley de 1984, Johnny Lawrence busca la redención al reabrir el infame dojo Cobra Kai.',
-    rating: 8.5,
-    duration: '30 min',
-    genre: 'Acción / Comedia',
-    bannerUrl: 'https://images.unsplash.com/photo-1555597673-b21d5c935865?auto=format&fit=crop&w=1200&h=500&q=80',
-    thumbnailUrl: 'https://images.unsplash.com/photo-1555597673-b21d5c935865?auto=format&fit=crop&w=300&h=180&q=80',
-  }
-];
+const DEFAULT_POSTER = 'data:image/svg+xml,' + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">' +
+  '<rect width="400" height="600" fill="#1a1a2e"/>' +
+  '<rect x="120" y="160" width="160" height="280" rx="8" fill="none" stroke="#333" stroke-width="6"/>' +
+  '<circle cx="200" cy="300" r="50" fill="none" stroke="#333" stroke-width="6"/>' +
+  '<polygon points="200,265 200,335 245,300" fill="#333"/>' +
+  '</svg>'
+);
 
 export const Home: React.FC = () => {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const { activeProfile, clearActiveProfile } = useProfile();
   const navigate = useNavigate();
-  const [movies, setMovies] = useState<Movie[]>(MOCK_MOVIES);
+  const [allMovies, setAllMovies] = useState<Movie[]>([]);
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [realMovieData, setRealMovieData] = useState<any>(null);
+  const [playingMovie, setPlayingMovie] = useState<Movie | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Movie[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const carouselRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Cargar catálogo de películas real y actualizar calificaciones en el estado
-    movieService.getMovies().then(apiMovies => {
-      if (apiMovies && apiMovies.length > 0) {
-        setMovies(prevMovies => 
-          prevMovies.map(mockMovie => {
-            const match = apiMovies.find(apiM => apiM.movieId === mockMovie.movieId);
-            if (match) {
-              return {
-                ...mockMovie,
-                rating: match.rating !== undefined ? match.rating : mockMovie.rating
-              };
-            }
-            return mockMovie;
-          })
-        );
+    const fetchMovies = async () => {
+      try {
+        const movies = await movieService.getMovies();
+        setAllMovies(movies);
+      } catch (err) {
+        console.error('Error al cargar películas:', err);
+      } finally {
+        setLoading(false);
       }
-    });
+    };
+    fetchMovies();
   }, []);
 
   useEffect(() => {
@@ -85,13 +52,33 @@ export const Home: React.FC = () => {
         if (data) {
           setRealMovieData(data);
           // Actualizar también la película en la lista principal por si cambió la puntuación tras una reseña
-          setMovies(prevMovies =>
+          setAllMovies(prevMovies =>
             prevMovies.map(m => m.movieId === selectedMovie.movieId ? { ...m, rating: data.rating } : m)
           );
         }
       });
     }
   }, [selectedMovie]);
+
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+    setIsSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const results = await movieService.searchMovies(searchQuery.trim());
+        setSearchResults(results);
+      } catch (err) {
+        console.error('Error en búsqueda:', err);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleLogout = () => {
     logout({ logoutParams: { returnTo: window.location.origin } });
@@ -102,10 +89,40 @@ export const Home: React.FC = () => {
     navigate('/profiles');
   };
 
+  const handleClearSearch = () => {
+    setSearchQuery('');
+    setSearchResults([]);
+  };
+
+  const heroMovie = allMovies.find(m => m.poster != null) || allMovies[0];
+
+  const scroll = (direction: 'left' | 'right') => {
+    if (!carouselRef.current) return;
+    const amount = carouselRef.current.clientWidth * 0.6;
+    carouselRef.current.scrollBy({
+      left: direction === 'left' ? -amount : amount,
+      behavior: 'smooth'
+    });
+  };
+
+  if (loading) {
+    return (
+      <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0c', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{
+            width: '48px', height: '48px', border: '3px solid rgba(229, 9, 20, 0.2)',
+            borderTopColor: '#e50914', borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+            margin: '0 auto 16px'
+          }} />
+          <span style={{ color: '#a1a1aa', fontSize: '14px' }}>Cargando películas...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0c', paddingBottom: '60px' }}>
-      {/* Barra de Navegación */}
-      <nav 
+      <nav
         className="glass-panel"
         style={{
           display: 'flex',
@@ -119,19 +136,60 @@ export const Home: React.FC = () => {
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '30px' }}>
-          <span style={{
-            fontSize: '28px',
-            fontWeight: 800,
-            color: '#e50914',
-            letterSpacing: '1px',
-            textTransform: 'uppercase'
-          }}>Netflix</span>
-          <span style={{ fontSize: '15px', color: '#f5f5f7', fontWeight: 500, cursor: 'pointer' }}>Inicio</span>
+          <span
+            onClick={handleClearSearch}
+            style={{
+              fontSize: '28px',
+              fontWeight: 800,
+              color: '#e50914',
+              letterSpacing: '1px',
+              textTransform: 'uppercase',
+              cursor: 'pointer'
+            }}
+          >
+            Netflix
+          </span>
+          <span
+            onClick={handleClearSearch}
+            style={{ fontSize: '15px', color: '#f5f5f7', fontWeight: 500, cursor: 'pointer' }}
+          >
+            Inicio
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: '1', maxWidth: '400px', margin: '0 24px' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
+            backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: '6px',
+            padding: '8px 12px', border: '1px solid rgba(255,255,255,0.08)',
+            transition: 'border-color 0.2s'
+          }}>
+            <Search size={16} color="#a1a1aa" />
+            <input
+              type="text"
+              placeholder="Buscar películas..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                flex: 1, background: 'transparent', border: 'none',
+                outline: 'none', color: '#f5f5f7', fontSize: '14px',
+                fontFamily: 'inherit'
+              }}
+            />
+            {searchQuery && (
+              <X
+                size={14}
+                color="#a1a1aa"
+                style={{ cursor: 'pointer' }}
+                onClick={handleClearSearch}
+              />
+            )}
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
           {activeProfile && (
-            <div 
+            <div
               onClick={handleSwitchProfile}
               style={{
                 display: 'flex',
@@ -147,8 +205,8 @@ export const Home: React.FC = () => {
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)'}
             >
-              <img 
-                src={activeProfile.avatarUrl} 
+              <img
+                src={activeProfile.avatarUrl}
                 alt={activeProfile.name}
                 style={{ width: '28px', height: '28px', borderRadius: '4px', objectFit: 'cover' }}
               />
@@ -188,107 +246,238 @@ export const Home: React.FC = () => {
         </div>
       </nav>
 
-      {/* Hero Banner */}
-      <div 
-        style={{
-          height: '60vh',
-          backgroundImage: movies.length > 0 ? `linear-gradient(to top, #0a0a0c 0%, rgba(10, 10, 12, 0.4) 100%), url(${movies[0].bannerUrl})` : '',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'flex-end',
-          padding: '0 4% 40px 4%',
-        }}
-      >
-        <h1 style={{ fontSize: '56px', fontWeight: 800, marginBottom: '16px', letterSpacing: '-1px' }}>
-          {movies.length > 0 ? movies[0].title : ''}
-        </h1>
-        <p style={{ fontSize: '16px', color: '#d4d4d8', maxWidth: '600px', marginBottom: '24px', lineHeight: '1.6' }}>
-          {movies.length > 0 ? movies[0].description : ''}
-        </p>
-        <div style={{ display: 'flex', gap: '16px' }}>
-          <button 
-            onClick={() => movies.length > 0 && setSelectedMovie(movies[0])}
-            style={{
-              backgroundColor: '#e50914',
-              color: '#fff',
-              border: 'none',
-              padding: '12px 28px',
-              borderRadius: '6px',
-              fontSize: '16px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '10px',
-              boxShadow: '0 4px 14px rgba(229, 9, 20, 0.3)'
-            }}
-          >
-            <Play size={18} fill="#fff" /> Ver Ahora
-          </button>
+      {searchQuery.trim() ? (
+        <div style={{ padding: '30px 4% 0 4%', animation: 'fadeIn 0.3s ease' }}>
+          <h2 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Search size={22} color="#a1a1aa" />
+            Resultados para "{searchQuery.trim()}"
+          </h2>
+
+          {isSearching && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '60px 0' }}>
+              <div style={{
+                width: '36px', height: '36px', border: '3px solid rgba(229, 9, 20, 0.2)',
+                borderTopColor: '#e50914', borderRadius: '50%', animation: 'spin 0.8s linear infinite'
+              }} />
+            </div>
+          )}
+
+          {!isSearching && searchResults.length === 0 && (
+            <p style={{ color: '#a1a1aa', fontSize: '15px', padding: '40px 0', textAlign: 'center' }}>
+              No se encontraron películas para "{searchQuery.trim()}"
+            </p>
+          )}
+
+          {!isSearching && searchResults.length > 0 && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+              gap: '20px'
+            }}>
+              {searchResults.map(movie => (
+                <div
+                  key={movie.movieId}
+                  onClick={() => setSelectedMovie(movie)}
+                  className="glass-panel"
+                  style={{
+                    borderRadius: '8px', overflow: 'hidden', cursor: 'pointer',
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    border: '1px solid rgba(255, 255, 255, 0.05)'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-5px)';
+                    e.currentTarget.style.borderColor = 'rgba(229, 9, 20, 0.4)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.05)';
+                  }}
+                >
+                  <div style={{ height: '280px', overflow: 'hidden', position: 'relative' }}>
+                    <img
+                      src={movie.poster || DEFAULT_POSTER}
+                      alt={movie.title}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_POSTER; }}
+                    />
+                  </div>
+                  <div style={{ padding: '12px' }}>
+                    <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{movie.title}</h3>
+                    <div style={{ display: 'flex', gap: '8px', fontSize: '12px', color: '#a1a1aa', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '3px', color: '#f5f5f7' }}>
+                        <Star size={10} fill="#e50914" color="#e50914" />
+                        {movie.rating}
+                      </span>
+                      <span>{movie.duration}</span>
+                      <span style={{ backgroundColor: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px', fontSize: '10px' }}>
+                        {movie.genre}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      </div>
-
-      {/* Catálogo de películas */}
-      <div style={{ padding: '40px 4% 0 4%' }}>
-        <h2 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Film size={22} className="text-secondary" />
-          Mi Lista de Contenido
-        </h2>
-
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-          gap: '24px'
-        }}>
-          {movies.map(movie => (
+      ) : (
+        <>
+          {heroMovie && (
             <div
-              key={movie.movieId}
-              onClick={() => setSelectedMovie(movie)}
-              className="glass-panel"
               style={{
-                borderRadius: '8px',
-                overflow: 'hidden',
-                cursor: 'pointer',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                border: '1px solid rgba(255, 255, 255, 0.05)'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-5px)';
-                e.currentTarget.style.borderColor = 'rgba(229, 9, 20, 0.4)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.05)';
+                height: '60vh',
+                backgroundImage: `linear-gradient(to top, #0a0a0c 0%, rgba(10, 10, 12, 0.4) 100%), url(${heroMovie.poster})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'flex-end',
+                padding: '0 4% 40px 4%',
               }}
             >
-              <div style={{ height: '160px', overflow: 'hidden', position: 'relative' }}>
-                <img 
-                  src={movie.thumbnailUrl} 
-                  alt={movie.title}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              </div>
-              <div style={{ padding: '16px' }}>
-                <h3 style={{ fontSize: '18px', fontWeight: 600, marginBottom: '8px' }}>{movie.title}</h3>
-                <div style={{ display: 'flex', gap: '12px', fontSize: '13px', color: '#a1a1aa', alignItems: 'center' }}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#f5f5f7' }}>
-                    <Star size={12} fill="#e50914" color="#e50914" />
-                    {movie.rating}
-                  </span>
-                  <span>{movie.duration}</span>
-                  <span style={{ backgroundColor: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px', fontSize: '11px' }}>
-                    {movie.genre}
-                  </span>
-                </div>
+              <h1 style={{ fontSize: '56px', fontWeight: 800, marginBottom: '16px', letterSpacing: '-1px' }}>
+                {heroMovie.title}
+              </h1>
+              <p style={{ fontSize: '16px', color: '#d4d4d8', maxWidth: '600px', marginBottom: '24px', lineHeight: '1.6' }}>
+                {heroMovie.description}
+              </p>
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <button
+                  onClick={() => setPlayingMovie(heroMovie)}
+                  style={{
+                    backgroundColor: '#e50914',
+                    color: '#fff',
+                    border: 'none',
+                    padding: '12px 28px',
+                    borderRadius: '6px',
+                    fontSize: '16px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    boxShadow: '0 4px 14px rgba(229, 9, 20, 0.3)'
+                  }}
+                >
+                  <Play size={18} fill="#fff" /> Ver Ahora
+                </button>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
+          )}
 
-      {/* Modal de Detalle de Película */}
+          <div style={{ padding: '40px 4% 0 4%' }}>
+            <h2 style={{ fontSize: '24px', fontWeight: 600, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <Film size={22} className="text-secondary" />
+              Mi Lista de Contenido
+            </h2>
+
+            <div style={{ position: 'relative' }}>
+              <button
+                onClick={() => scroll('left')}
+                style={{
+                  position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 10,
+                  background: 'linear-gradient(to right, rgba(10,10,12,0.8) 0%, transparent 100%)',
+                  border: 'none', color: '#fff', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', padding: '0 12px',
+                  opacity: 0, transition: 'opacity 0.2s'
+                }}
+                onMouseEnter={(e) => { if (e.currentTarget.parentElement) e.currentTarget.style.opacity = '1'; }}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}
+              >
+                <ChevronLeft size={32} />
+              </button>
+
+              <div
+                ref={carouselRef}
+                style={{
+                  display: 'flex', gap: '16px', overflowX: 'auto',
+                  scrollBehavior: 'smooth', paddingBottom: '8px',
+                  scrollbarWidth: 'none', msOverflowStyle: 'none'
+                }}
+                onScroll={(e) => {
+                  const container = e.currentTarget;
+                  const leftBtn = container.previousElementSibling as HTMLElement;
+                  const rightBtn = container.nextElementSibling as HTMLElement;
+                  if (leftBtn) leftBtn.style.opacity = container.scrollLeft > 10 ? '1' : '0';
+                  if (rightBtn) {
+                    rightBtn.style.opacity =
+                      container.scrollLeft + container.clientWidth < container.scrollWidth - 10 ? '1' : '0';
+                  }
+                }}
+              >
+                {allMovies.map(movie => (
+                  <div
+                    key={movie.movieId}
+                    onClick={() => setSelectedMovie(movie)}
+                    className="glass-panel"
+                    style={{
+                      flex: '0 0 200px',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                      border: '1px solid rgba(255, 255, 255, 0.05)'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-5px)';
+                      e.currentTarget.style.borderColor = 'rgba(229, 9, 20, 0.4)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.05)';
+                    }}
+                  >
+                    <div style={{ height: '280px', overflow: 'hidden', position: 'relative' }}>
+                      <img
+                        src={movie.poster || DEFAULT_POSTER}
+                        alt={movie.title}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_POSTER; }}
+                      />
+                    </div>
+                    <div style={{ padding: '12px' }}>
+                      <h3 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{movie.title}</h3>
+                      <div style={{ display: 'flex', gap: '8px', fontSize: '12px', color: '#a1a1aa', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '3px', color: '#f5f5f7' }}>
+                          <Star size={10} fill="#e50914" color="#e50914" />
+                          {movie.rating}
+                        </span>
+                        <span>{movie.duration}</span>
+                        <span style={{ backgroundColor: 'rgba(255,255,255,0.08)', padding: '2px 6px', borderRadius: '4px', fontSize: '10px' }}>
+                          {movie.genre}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={() => scroll('right')}
+                style={{
+                  position: 'absolute', right: 0, top: 0, bottom: 0, zIndex: 10,
+                  background: 'linear-gradient(to left, rgba(10,10,12,0.8) 0%, transparent 100%)',
+                  border: 'none', color: '#fff', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', padding: '0 12px',
+                  opacity: 0, transition: 'opacity 0.2s'
+                }}
+                onMouseEnter={(e) => { if (e.currentTarget.parentElement) e.currentTarget.style.opacity = '1'; }}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}
+              >
+                <ChevronRight size={32} />
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {playingMovie && user && (
+        <VideoPlayer
+          movie={playingMovie}
+          userId={user.sub}
+          onClose={() => setPlayingMovie(null)}
+        />
+      )}
+
       {selectedMovie && (
         <div style={{
           position: 'fixed',
@@ -304,7 +493,7 @@ export const Home: React.FC = () => {
           overflowY: 'auto',
           padding: '40px 20px'
         }}>
-          <div 
+          <div
             className="glass-panel animate-scale-up"
             style={{
               width: '100%',
@@ -315,10 +504,9 @@ export const Home: React.FC = () => {
               backgroundColor: '#0f0f12'
             }}
           >
-            {/* Cabecera del Modal con imagen */}
             <div style={{ height: '350px', position: 'relative' }}>
-              <img 
-                src={selectedMovie.bannerUrl} 
+              <img
+                src={selectedMovie.poster || DEFAULT_POSTER}
                 alt={selectedMovie.title}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
@@ -352,7 +540,6 @@ export const Home: React.FC = () => {
               </button>
             </div>
 
-            {/* Contenido de Detalles */}
             <div style={{ padding: '30px 40px' }}>
               <h2 style={{ fontSize: '32px', fontWeight: 800, marginBottom: '12px' }}>{selectedMovie.title}</h2>
               <div style={{ display: 'flex', gap: '16px', fontSize: '14px', color: '#a1a1aa', marginBottom: '20px', alignItems: 'center' }}>
@@ -370,8 +557,6 @@ export const Home: React.FC = () => {
               <p style={{ color: '#d4d4d8', fontSize: '16px', lineHeight: '1.6', marginBottom: '30px' }}>
                 {selectedMovie.description}
               </p>
-
-              {/* Sección de Reseñas */}
               <ReviewsSection movieId={selectedMovie.movieId} />
             </div>
           </div>

@@ -145,28 +145,154 @@ export const profileService = {
   }
 };
 
+export interface Movie {
+  movieId: string;
+  title: string;
+  description: string;
+  rating: number;
+  duration: string;
+  genre: string;
+  poster: string | null;
+}
+
+interface ApiMovie {
+  movieId?: string;
+  id?: string;
+  title?: string;
+  name?: string;
+  description?: string;
+  overview?: string;
+  summary?: string;
+  rating?: number;
+  score?: number;
+  vote_average?: number;
+  duration?: string;
+  runtime?: number;
+  length?: string;
+  genre?: string;
+  genres?: string[];
+  category?: string;
+  poster?: string | null;
+  poster_path?: string | null;
+  image?: string | null;
+  thumbnailUrl?: string;
+  bannerUrl?: string;
+}
+
+const MOCK_MOVIES_FALLBACK: Movie[] = [
+  {
+    movieId: 'm1',
+    title: 'Stranger Things',
+    description: 'Cuando un niño desaparece, sus amigos, una madre y un jefe de policía deben enfrentarse a fuerzas terroríficas.',
+    rating: 8.7,
+    duration: '45 min',
+    genre: 'Sci-Fi / Drama',
+    poster: 'https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=400&h=600&q=80',
+  },
+  {
+    movieId: 'm2',
+    title: 'The Witcher',
+    description: 'Geralt de Rivia, un cazador de monstruos mutante, viaja hacia su destino en un mundo turbulento.',
+    rating: 8.1,
+    duration: '60 min',
+    genre: 'Fantasía / Acción',
+    poster: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&h=600&q=80',
+  },
+  {
+    movieId: 'm3',
+    title: 'Cobra Kai',
+    description: 'Treinta y cuatro años después del torneo de karate de All Valley, Johnny Lawrence busca la redención.',
+    rating: 8.5,
+    duration: '30 min',
+    genre: 'Acción / Comedia',
+    poster: 'https://images.unsplash.com/photo-1555597673-b21d5c935865?auto=format&fit=crop&w=400&h=600&q=80',
+  },
+  {
+    movieId: 'm4',
+    title: 'The Crown',
+    description: 'Relato de las rivalidades personales y políticas durante el reinado de Isabel II.',
+    rating: 8.6,
+    duration: '50 min',
+    genre: 'Drama / Historia',
+    poster: 'https://images.unsplash.com/photo-1598899134739-24c46f58b6c0?auto=format&fit=crop&w=400&h=600&q=80',
+  },
+  {
+    movieId: 'm5',
+    title: 'Dark',
+    description: 'Un niño desaparece en un pequeño pueblo alemán, revelando los secretos de cuatro familias.',
+    rating: 8.8,
+    duration: '55 min',
+    genre: 'Ciencia Ficción / Thriller',
+    poster: 'https://images.unsplash.com/photo-1509248961158-c54f693fe9a8?auto=format&fit=crop&w=400&h=600&q=80',
+  },
+];
+
+const normalizeMovie = (raw: ApiMovie): Movie => ({
+  movieId: raw.movieId || raw.id || '',
+  title: raw.title || raw.name || '',
+  description: raw.description || raw.overview || raw.summary || '',
+  rating: raw.rating ?? raw.score ?? raw.vote_average ?? 0,
+  duration: raw.duration || (raw.runtime ? `${raw.runtime} min` : '') || raw.length || '',
+  genre: raw.genre || (raw.genres ? raw.genres.join(' / ') : '') || raw.category || '',
+  poster: raw.poster ?? raw.poster_path ?? raw.image ?? raw.thumbnailUrl ?? raw.bannerUrl ?? null,
+});
+
+const extractMovies = (data: unknown): Movie[] => {
+  let list: ApiMovie[] = [];
+  if (Array.isArray(data)) {
+    list = data;
+  } else if (data && typeof data === 'object') {
+    const obj = data as Record<string, unknown>;
+    list = (obj.items as ApiMovie[]) || (obj.data as ApiMovie[]) || (obj.results as ApiMovie[]) || [];
+  }
+  return list.map(normalizeMovie);
+};
+
 export const movieService = {
-  getMovies: async (): Promise<any[]> => {
+  getMovies: async (): Promise<Movie[]> => {
     try {
       const response = await apiClient.get('/movies');
-      return response.data.items || response.data.movies || response.data || [];
+      return extractMovies(response.data);
     } catch (err) {
-      console.warn("Falla al cargar catálogo de películas desde API:", err);
-      return [];
+      console.warn('Falla en API de películas, usando datos de respaldo:', err);
+      return MOCK_MOVIES_FALLBACK;
     }
   },
-
-  getMovie: async (movieId: string): Promise<any> => {
+  getMovie: async (movieId: string): Promise<Movie | null> => {
     try {
       const response = await apiClient.get(`/movies/${movieId}`);
-      return response.data.movie || response.data;
+      return normalizeMovie(response.data.movie || response.data);
     } catch (err) {
-      console.warn(`Falla al cargar detalle de película ${movieId} desde API:`, err);
-      return null;
+      console.warn(`Falla al cargar detalle de película ${movieId} desde API, usando respaldo:`, err);
+      return MOCK_MOVIES_FALLBACK.find(m => m.movieId === movieId) || null;
+    }
+  },
+  searchMovies: async (query: string): Promise<Movie[]> => {
+    try {
+      const response = await apiClient.get('/movies', { params: { q: query } });
+      return extractMovies(response.data);
+    } catch (err) {
+      console.warn('Falla en API de búsqueda, usando datos de respaldo:', err);
+      const q = query.toLowerCase();
+      return MOCK_MOVIES_FALLBACK.filter(m =>
+        m.title.toLowerCase().includes(q) || m.genre.toLowerCase().includes(q)
+      );
     }
   }
 };
 
+export const streamingService = {
+  createSession: async (movieId: string): Promise<{ url: string }> => {
+    const response = await apiClient.post('/streaming/sessions', { movieId });
+    return response.data;
+  }
+};
+
+export const historyService = {
+  updateProgress: async (userId: string, movieId: string, currentTime: number): Promise<void> => {
+    await apiClient.put(`/users/${userId}/history/${movieId}`, { currentTime });
+  }
+};
 export const reviewService = {
   getReviews: async (movieId: string): Promise<Review[]> => {
     try {
