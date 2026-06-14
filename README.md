@@ -87,3 +87,31 @@ smithy build
 ```
 
 > Requires [Smithy CLI](https://smithy.io/2.0/guides/smithy-cli/cli_installation.html) installed.
+
+---
+
+## Frontend Application (SPA)
+
+The frontend is a React Single Page Application (SPA) built with TypeScript and Vite. It is located in the `/frontend` directory.
+
+### Configuration
+Create a `.env` file in the `/frontend` directory (using `.env.example` as a template):
+```env
+VITE_COGNITO_DOMAIN=your-cognito-domain.auth.us-east-1.amazoncognito.com
+VITE_COGNITO_CLIENT_ID=your-user-pool-client-id
+VITE_COGNITO_REGION=us-east-1
+VITE_COGNITO_SCOPES=openid profile email
+VITE_API_BASE_URL=https://your-api-gateway-url/prod/v1
+```
+
+### Running Locally
+To install dependencies and start the local development server:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+- **Mock Authentication Mode**: If the `VITE_COGNITO_DOMAIN` is not set or points to the placeholder, the application automatically starts in a secure **Mock Mode** using `localStorage` for testing.
+- **Cognito Integration Mode**: When configured with valid AWS Cognito credentials, it redirects the user to the Cognito Hosted UI for sign-up and sign-in.

@@ -4,30 +4,63 @@ export interface AuthContext {
   roles: string[];
 }
 
+type AuthClaims = Record<string, any>;
+
 // Helper to decode a JWT without verifying (useful for local development/testing)
 function decodeJwt(token: string): any {
   try {
-    const parts = token.replace("Bearer ", "").trim().split(".");
+    const parts = token.replace(/^Bearer\s+/i, "").trim().split(".");
     if (parts.length !== 3) return null;
-    const payload = Buffer.from(parts[1], "base64").toString("utf-8");
+    const normalized = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const payload = Buffer.from(normalized, "base64").toString("utf-8");
     return JSON.parse(payload);
   } catch {
     return null;
   }
 }
 
-export function getAuthContext(event: any): AuthContext {
+function getClaimsFromEvent(event: any): AuthClaims | null {
   const authorizer = event.requestContext?.authorizer;
-  const claims = authorizer?.claims || authorizer;
+  if (!authorizer) {
+    return null;
+  }
+
+  if (authorizer.jwt?.claims) {
+    return authorizer.jwt.claims;
+  }
+
+  if (authorizer.claims) {
+    return authorizer.claims;
+  }
+
+  return authorizer;
+}
+
+function normalizeScopes(claims: AuthClaims): string[] {
+  const scopeString = claims.scope || "";
+  if (typeof scopeString !== "string") {
+    return ["catalog:read", "catalog:write", "mylist:read", "mylist:write", "history:read", "history:write"];
+  }
+  let scopes = scopeString.split(" ").filter((s: string) => s.length > 0);
+  if (scopes.length === 0) {
+    scopes = ["catalog:read", "catalog:write", "mylist:read", "mylist:write", "history:read", "history:write"];
+  }
+  return scopes;
+}
+
+function normalizeRoles(claims: AuthClaims): string[] {
+  const roles = claims["https://netflix-clone.com/roles"] || claims.roles || claims["cognito:groups"] || [];
+  return Array.isArray(roles) ? roles : [roles];
+}
+
+export function getAuthContext(event: any): AuthContext {
+  const claims = getClaimsFromEvent(event);
 
   if (claims && (claims.sub || claims.principalId)) {
-    const scopeString = claims.scope || "";
-    const scopes = scopeString.split(" ").filter((s: string) => s.length > 0);
-    const roles = claims["https://netflix-clone.com/roles"] || claims.roles || [];
     return {
       userId: claims.sub || claims.principalId,
-      scopes,
-      roles: Array.isArray(roles) ? roles : [roles],
+      scopes: normalizeScopes(claims),
+      roles: normalizeRoles(claims),
     };
   }
 
@@ -36,13 +69,10 @@ export function getAuthContext(event: any): AuthContext {
   if (authHeader) {
     const decoded = decodeJwt(authHeader);
     if (decoded) {
-      const scopeString = decoded.scope || "";
-      const scopes = scopeString.split(" ").filter((s: string) => s.length > 0);
-      const roles = decoded["https://netflix-clone.com/roles"] || decoded.roles || [];
       return {
         userId: decoded.sub || "mock-user",
-        scopes,
-        roles: Array.isArray(roles) ? roles : [roles],
+        scopes: normalizeScopes(decoded),
+        roles: normalizeRoles(decoded),
       };
     }
   }
