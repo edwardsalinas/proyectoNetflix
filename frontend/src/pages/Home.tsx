@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../auth/auth';
 import { useProfile } from '../context/ProfileContext';
 import { ReviewsSection } from '../components/ReviewsSection';
@@ -32,7 +32,7 @@ export const Home: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Movie[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const carouselRef = useRef<HTMLDivElement>(null);
+  const catalogCarouselRef = useRef<HTMLDivElement>(null);
   const [recommendations, setRecommendations] = useState<Movie[]>([]);
   const [recommendationsLoading, setRecommendationsLoading] = useState(false);
   const recommendationsCarouselRef = useRef<HTMLDivElement>(null);
@@ -76,34 +76,11 @@ export const Home: React.FC = () => {
     return () => { cancelled = true; };
   }, [activeProfile?.profileId]);
 
-  const [historyList, setHistoryList] = useState<{ movieId: string; currentTime: number; duration?: number; updatedAt?: string }[]>([]);
-  const [userList, setUserList] = useState<{ movieId: string; addedAt: string }[]>([]);
-
-  const historyCarouselRef = useRef<HTMLDivElement>(null);
-  const myListCarouselRef = useRef<HTMLDivElement>(null);
-  const catalogCarouselRef = useRef<HTMLDivElement>(null);
-
-  const fetchUserHistoryAndList = async () => {
-    if (user?.sub) {
-      try {
-        const [history, list] = await Promise.all([
-          historyService.getHistory(user.sub),
-          userListService.getUserList(user.sub)
-        ]);
-        setHistoryList(history);
-        setUserList(list);
-      } catch (err) {
-        console.error('Error al cargar historial y lista:', err);
-      }
-    }
-  };
-
   useEffect(() => {
     const fetchMovies = async () => {
       try {
         const movies = await movieService.getMovies();
         setAllMovies(movies);
-        await fetchUserHistoryAndList();
       } catch (err) {
         console.error('Error al cargar películas:', err);
       } finally {
@@ -111,7 +88,7 @@ export const Home: React.FC = () => {
       }
     };
     fetchMovies();
-  }, [user]);
+  }, []);
 
   useEffect(() => {
     if (selectedMovie) {
@@ -149,47 +126,45 @@ export const Home: React.FC = () => {
     return () => { cancelled = true; };
   }, [user?.sub, activeProfile?.profileId, genreMap]);
 
-  useEffect(() => {
+  const fetchMyListAndHistory = useCallback(async () => {
     if (!user?.sub || !activeProfile?.profileId) {
       setMyList([]);
       setWatchHistory([]);
       return;
     }
-    let cancelled = false;
-    const fetchMyListAndHistory = async () => {
-      try {
-        const [listData, historyData, movies] = await Promise.all([
-          userListService.getUserList(user.sub, activeProfile.profileId),
-          historyService.getHistory(user.sub, activeProfile.profileId),
-          movieService.getMovies()
-        ]);
-        if (cancelled) return;
+    try {
+      const [listData, historyData, movies] = await Promise.all([
+        userListService.getUserList(user.sub, activeProfile.profileId),
+        historyService.getHistory(user.sub, activeProfile.profileId),
+        movieService.getMovies()
+      ]);
 
-        const userMoviesList = listData.map(item => {
-          const m = movies.find(movie => movie.movieId === item.movieId);
-          return m ? m : null;
-        }).filter((m): m is Movie => m !== null);
-        setMyList(userMoviesList);
+      const userMoviesList = listData.map(item => {
+        const m = movies.find(movie => movie.movieId === item.movieId);
+        return m ? m : null;
+      }).filter((m): m is Movie => m !== null);
+      setMyList(userMoviesList);
 
-        const userHistoryList = historyData.map(item => {
-          const m = movies.find(movie => movie.movieId === item.movieId);
-          if (m) {
-            return {
-              ...m,
-              currentTime: item.currentTime,
-              duration: item.duration || 60
-            };
-          }
-          return null;
-        }).filter((m): m is (Movie & { currentTime: number; duration: number }) => m !== null);
-        setWatchHistory(userHistoryList);
-      } catch (err) {
-        console.error('Error loading list and history for profile:', err);
-      }
-    };
-    fetchMyListAndHistory();
-    return () => { cancelled = true; };
+      const userHistoryList = historyData.map(item => {
+        const m = movies.find(movie => movie.movieId === item.movieId);
+        if (m) {
+          return {
+            ...m,
+            currentTime: item.currentTime,
+            duration: item.duration || 60
+          };
+        }
+        return null;
+      }).filter((m): m is (Movie & { currentTime: number; duration: number }) => m !== null);
+      setWatchHistory(userHistoryList);
+    } catch (err) {
+      console.error('Error loading list and history for profile:', err);
+    }
   }, [user?.sub, activeProfile?.profileId]);
+
+  useEffect(() => {
+    fetchMyListAndHistory();
+  }, [fetchMyListAndHistory]);
 
   useEffect(() => {
     if (!searchQuery.trim()) {
@@ -277,59 +252,6 @@ export const Home: React.FC = () => {
     document.getElementById('recomendaciones')?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const isInMyList = (movieId: string) => {
-    return userList.some(item => item.movieId === movieId);
-  };
-
-  const handleToggleMyList = async () => {
-    if (!selectedMovie || !user?.sub) return;
-    const movieId = selectedMovie.movieId;
-    const added = isInMyList(movieId);
-
-    // Actualización optimista
-    if (added) {
-      setUserList(prev => prev.filter(item => item.movieId !== movieId));
-    } else {
-      setUserList(prev => [...prev, { movieId, addedAt: new Date().toISOString() }]);
-    }
-
-    try {
-      if (added) {
-        await userListService.removeFromList(user.sub, movieId);
-      } else {
-        await userListService.addToList(user.sub, movieId);
-      }
-    } catch (err) {
-      console.error('Error al actualizar Mi Lista:', err);
-      // Revertir en caso de error
-      if (added) {
-        setUserList(prev => [...prev, { movieId, addedAt: new Date().toISOString() }]);
-      } else {
-        setUserList(prev => prev.filter(item => item.movieId !== movieId));
-      }
-    }
-  };
-
-  const handlePlayMovie = (movie: Movie, initialTime?: number) => {
-    setInitialPlayTime(initialTime);
-    setPlayingMovie(movie);
-  };
-
-  const continueWatchingMovies = historyList
-    .map(hist => {
-      const movie = allMovies.find(m => m.movieId === hist.movieId);
-      if (!movie) return null;
-      return {
-        ...movie,
-        currentTime: hist.currentTime,
-        durationSeconds: hist.duration || (parseInt(movie.duration) * 60) || 3600
-      };
-    })
-    .filter((m): m is NonNullable<typeof m> => m !== null && m.currentTime > 0);
-
-  const myListMovies = userList
-    .map(item => allMovies.find(m => m.movieId === item.movieId))
-    .filter((m): m is Movie => !!m);
   if (loading) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0c', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -575,7 +497,10 @@ export const Home: React.FC = () => {
               </p>
               <div style={{ display: 'flex', gap: '16px' }}>
                 <button
-                  onClick={() => handlePlayMovie(heroMovie)}
+                  onClick={() => {
+                    setInitialPlayTime(undefined);
+                    setPlayingMovie(heroMovie);
+                  }}
                   style={{
                     backgroundColor: '#e50914',
                     color: '#fff',
@@ -838,7 +763,7 @@ export const Home: React.FC = () => {
 
             <div style={{ position: 'relative' }}>
               <button
-                onClick={() => scroll(catalogCarouselRef, 'left')}
+                onClick={() => scroll(catalogCarouselRef.current, 'left')}
                 style={{
                   position: 'absolute', left: 0, top: 0, bottom: 0, zIndex: 10,
                   background: 'linear-gradient(to right, rgba(10,10,12,0.8) 0%, transparent 100%)',
@@ -908,7 +833,7 @@ export const Home: React.FC = () => {
               </div>
 
               <button
-                onClick={() => scroll(catalogCarouselRef, 'right')}
+                onClick={() => scroll(catalogCarouselRef.current, 'right')}
                 style={{
                   position: 'absolute', right: 0, top: 0, bottom: 0, zIndex: 10,
                   background: 'linear-gradient(to left, rgba(10,10,12,0.8) 0%, transparent 100%)',
