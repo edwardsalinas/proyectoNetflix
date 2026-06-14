@@ -6,7 +6,7 @@ import { DEFAULT_AVATARS } from '../api/client';
 import type { Profile } from '../api/client';
 
 export const ProfileSelection: React.FC = () => {
-  const { profiles, selectProfile, createProfile, deleteProfile, isLoadingProfiles, profilesError } = useProfile();
+  const { profiles, selectProfile, createProfile, deleteProfile, isLoadingProfiles, profilesError, activeProfile } = useProfile();
   const [showAddModal, setShowAddModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [selectedAvatar, setSelectedAvatar] = useState(DEFAULT_AVATARS[0]);
@@ -152,7 +152,7 @@ export const ProfileSelection: React.FC = () => {
                 height: '120px',
                 borderRadius: '8px',
                 overflow: 'hidden',
-                border: '3px solid transparent',
+                border: activeProfile?.profileId === p.profileId ? '3px solid #e50914' : '3px solid transparent',
                 transition: 'all 0.25s cubic-bezier(0.4, 0, 0.2, 1)',
                 position: 'relative'
               }}

@@ -295,41 +295,40 @@ export const streamingService = {
 };
 
 export const historyService = {
-  getHistory: async (userId: string): Promise<{ movieId: string; currentTime: number; duration?: number; updatedAt?: string }[]> => {
+  getHistory: async (userId: string, profileId: string): Promise<{ movieId: string; currentTime: number; duration: number }[]> => {
     try {
-      const response = await apiClient.get(`/users/${userId}/history`);
+      const response = await apiClient.get(`/users/${userId}/history`, { params: { profileId } });
       const items = response.data.items || response.data || [];
       return items.map((item: any) => ({
         movieId: item.movieId,
-        currentTime: item.progressSeconds || 0,
-        duration: item.duration || 0,
-        updatedAt: item.lastWatchedAt || item.updatedAt
+        currentTime: item.progressSeconds ?? item.currentTime ?? 0,
+        duration: item.duration || 60
       }));
     } catch (err) {
-      console.warn('Falla en API de historial, usando array vacío:', err);
+      console.warn('Error fetching history:', err);
       return [];
     }
   },
-  updateProgress: async (userId: string, movieId: string, currentTime: number): Promise<void> => {
-    await apiClient.put(`/users/${userId}/history/${movieId}`, { progressSeconds: Math.floor(currentTime) });
+  updateProgress: async (userId: string, profileId: string, movieId: string, currentTime: number): Promise<void> => {
+    await apiClient.put(`/users/${userId}/history/${movieId}?profileId=${profileId}`, { progressSeconds: Math.round(currentTime) });
   }
 };
 
 export const userListService = {
-  getUserList: async (userId: string): Promise<{ movieId: string; addedAt: string }[]> => {
+  getUserList: async (userId: string, profileId: string): Promise<{ movieId: string; addedAt: string }[]> => {
     try {
-      const response = await apiClient.get(`/users/${userId}/lists`);
+      const response = await apiClient.get(`/users/${userId}/lists`, { params: { profileId } });
       return response.data.items || response.data || [];
     } catch (err) {
-      console.warn('Falla en API de lista personal, usando array vacío:', err);
+      console.warn('Error fetching user list:', err);
       return [];
     }
   },
-  addToList: async (userId: string, movieId: string): Promise<void> => {
-    await apiClient.post(`/users/${userId}/lists`, { movieId });
+  addToList: async (userId: string, profileId: string, movieId: string): Promise<void> => {
+    await apiClient.post(`/users/${userId}/lists?profileId=${profileId}`, { movieId });
   },
-  removeFromList: async (userId: string, movieId: string): Promise<void> => {
-    await apiClient.delete(`/users/${userId}/lists/${movieId}`);
+  removeFromList: async (userId: string, profileId: string, movieId: string): Promise<void> => {
+    await apiClient.delete(`/users/${userId}/lists/${movieId}?profileId=${profileId}`);
   }
 };
 export const reviewService = {
