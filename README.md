@@ -16,6 +16,12 @@ Key capabilities:
 - 🌍 Global content delivery via CloudFront CDN
 - 📐 REST API modeled with Smithy
 
+## 🌐 Live Demo (Cloud)
+
+La aplicación está desplegada y accesible a nivel mundial mediante la CDN de Amazon CloudFront:
+🔗 **[https://d33whrv9c8h9sn.cloudfront.net](https://d33whrv9c8h9sn.cloudfront.net)**
+*(Nota: El registro e inicio de sesión están asegurados mediante AWS Cognito)*
+
 ---
 
 ## Project Documents
