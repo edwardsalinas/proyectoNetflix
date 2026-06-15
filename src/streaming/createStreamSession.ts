@@ -26,8 +26,9 @@ async function getPrivateKey(): Promise<string> {
   if (!response.SecretString) {
     throw new Error("SecretString is empty in private key secret");
   }
-  cachedPrivateKey = response.SecretString;
-  return response.SecretString;
+  const formattedKey = response.SecretString.replace(/\\n/g, "\n");
+  cachedPrivateKey = formattedKey;
+  return formattedKey;
 }
 
 function signUrl(resourceUrl: string, expiresEpoch: number, keyPairId: string, privateKey: string): string {

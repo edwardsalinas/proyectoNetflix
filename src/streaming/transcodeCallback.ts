@@ -35,11 +35,27 @@ export const handler = async (event: any) => {
       const bucketTranscoded = process.env.BUCKET_TRANSCODED_VIDEOS || "transcoded-videos";
       const posterUrl = `https://${bucketTranscoded}.s3.amazonaws.com/movies/${movieId}/thumbnails/thumb.0000000.jpg`;
 
-      // Update movie status to ready and register posterUrl
+      // Extract duration from EventBridge detail if available
+      let durationMinutes = movieResult.Item.durationMinutes || 120;
+      try {
+        const outputGroups = event.detail?.outputGroupDetails;
+        if (outputGroups && outputGroups.length > 0) {
+          const outputs = outputGroups[0].outputDetails;
+          if (outputs && outputs.length > 0 && outputs[0].durationInMs) {
+            durationMinutes = Math.ceil(outputs[0].durationInMs / 60000);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not parse duration from MediaConvert event:", err);
+      }
+
+      // Update movie status to ready, register posterUrl and save actual duration
       const updatedMovie = {
         ...movieResult.Item,
         videoStatus: "ready",
         posterUrl: movieResult.Item.posterUrl || posterUrl,
+        durationMinutes: durationMinutes,
+        duration: `${durationMinutes} min`,
         updatedAt: new Date().toISOString(),
       };
 
