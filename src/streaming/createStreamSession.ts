@@ -26,15 +26,19 @@ async function getPrivateKey(): Promise<string> {
   if (!response.SecretString) {
     throw new Error("SecretString is empty in private key secret");
   }
-  cachedPrivateKey = response.SecretString;
-  return response.SecretString;
+  const formattedKey = response.SecretString.replace(/\\n/g, "\n");
+  cachedPrivateKey = formattedKey;
+  return formattedKey;
 }
 
 function signUrl(resourceUrl: string, expiresEpoch: number, keyPairId: string, privateKey: string): string {
+  // Generate wildcard resource URL for the movie directory (e.g. movies/m1/*)
+  const wildcardResourceUrl = resourceUrl.substring(0, resourceUrl.lastIndexOf("/")) + "/*";
+
   const policy = JSON.stringify({
     Statement: [
       {
-        Resource: resourceUrl,
+        Resource: wildcardResourceUrl,
         Condition: {
           DateLessThan: {
             "AWS:EpochTime": expiresEpoch,
@@ -44,15 +48,19 @@ function signUrl(resourceUrl: string, expiresEpoch: number, keyPairId: string, p
     ],
   });
 
+  const safePolicy = Buffer.from(policy, "utf-8").toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "~")
+    .replace(/=/g, "_");
+
   const sign = createSign("RSA-SHA1");
   sign.update(policy);
   const signature = sign.sign(privateKey, "base64")
     .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=/g, "");
+    .replace(/\//g, "~")
+    .replace(/=/g, "_");
 
-  const separator = resourceUrl.includes("?") ? "&" : "?";
-  return `${resourceUrl}${separator}Expires=${expiresEpoch}&Signature=${signature}&Key-Pair-Id=${keyPairId}`;
+  return `${resourceUrl}?Policy=${safePolicy}&Signature=${signature}&Key-Pair-Id=${keyPairId}`;
 }
 
 export const handler = async (event: any) => {
@@ -90,7 +98,10 @@ export const handler = async (event: any) => {
     }
 
     // 2. Determine video quality
-    const quality = preferredQuality || "1080p";
+    let quality = preferredQuality || "1080p";
+    if (quality === "4k") {
+      quality = "2160p";
+    }
 
     // 3. Retrieve actual HLS playlist URL from DynamoDB video_assets if registered
     let playlistUrl = "";

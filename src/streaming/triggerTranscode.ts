@@ -75,6 +75,7 @@ export const handler = async (event: any) => {
 
         // Output destination: s3://<bucket>/movies/<movieId>/output
         const destination = `s3://${BUCKET_TRANSCODED_VIDEOS}/movies/${movieId}/output`;
+        const thumbnailDestination = `s3://${BUCKET_TRANSCODED_VIDEOS}/movies/${movieId}/thumbnails/thumb`;
 
         const createJobCommand = new CreateJobCommand({
           Role: MEDIACONVERT_ROLE_ARN,
@@ -106,6 +107,36 @@ export const handler = async (event: any) => {
                   },
                 },
                 Outputs: [
+                  {
+                    NameModifier: "_2160p",
+                    ContainerSettings: {
+                      Container: "M3U8",
+                    },
+                    VideoDescription: {
+                      Width: 3840,
+                      Height: 2160,
+                      CodecSettings: {
+                        Codec: "H_264",
+                        H264Settings: {
+                          Bitrate: 15000000,
+                          RateControlMode: "CBR",
+                          SceneChangeDetect: "ENABLED",
+                        },
+                      },
+                    },
+                    AudioDescriptions: [
+                      {
+                        CodecSettings: {
+                          Codec: "AAC",
+                          AacSettings: {
+                            Bitrate: 192000,
+                            CodingMode: "CODING_MODE_2_0",
+                            SampleRate: 48000,
+                          },
+                        },
+                      },
+                    ],
+                  },
                   {
                     NameModifier: "_1080p",
                     ContainerSettings: {
@@ -161,40 +192,70 @@ export const handler = async (event: any) => {
                             Bitrate: 96000,
                             CodingMode: "CODING_MODE_2_0",
                             SampleRate: 48000,
+                          },
+                        },
+                      },
+                    ],
+                  },
+                  {
+                    NameModifier: "_480p",
+                    ContainerSettings: {
+                      Container: "M3U8",
+                    },
+                    VideoDescription: {
+                      Width: 854,
+                      Height: 480,
+                      CodecSettings: {
+                        Codec: "H_264",
+                        H264Settings: {
+                          Bitrate: 1000000,
+                          RateControlMode: "CBR",
+                          SceneChangeDetect: "ENABLED",
                         },
                       },
                     },
-                  ],
+                    AudioDescriptions: [
+                      {
+                        CodecSettings: {
+                          Codec: "AAC",
+                          AacSettings: {
+                            Bitrate: 96000,
+                            CodingMode: "CODING_MODE_2_0",
+                            SampleRate: 48000,
+                          },
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            {
+              CustomName: "Thumbnails",
+              Name: "File Group",
+              OutputGroupSettings: {
+                Type: "FILE_GROUP_SETTINGS",
+                FileGroupSettings: {
+                  Destination: thumbnailDestination,
                 },
+              },
+              Outputs: [
                 {
-                  NameModifier: "_480p",
                   ContainerSettings: {
-                    Container: "M3U8",
+                    Container: "RAW",
                   },
                   VideoDescription: {
-                    Width: 854,
-                    Height: 480,
+                    Width: 1280,
+                    Height: 720,
                     CodecSettings: {
-                      Codec: "H_264",
-                      H264Settings: {
-                        Bitrate: 1000000,
-                        RateControlMode: "CBR",
-                        SceneChangeDetect: "ENABLED",
+                      Codec: "FRAME_CAPTURE",
+                      FrameCaptureSettings: {
+                        FramerateNumerator: 1,
+                        FramerateDenominator: 5,
+                        MaxCaptures: 1,
+                        Quality: 80,
                       },
                     },
                   },
-                  AudioDescriptions: [
-                    {
-                      CodecSettings: {
-                        Codec: "AAC",
-                        AacSettings: {
-                          Bitrate: 96000,
-                          CodingMode: "CODING_MODE_2_0",
-                          SampleRate: 48000,
-                        },
-                      },
-                    },
-                  ],
                 },
               ],
             },
@@ -232,8 +293,19 @@ export const handler = async (event: any) => {
         // ───────────────────────────────────────────────────────────────────────
         console.log(`Simulating transcode for movie ${movieId} in AWS...`);
         
-        // Mock HLS Playlist redirects to a real playable stream (Tears of Steel)
-        const playlistContent = `#EXTM3U
+        // Mock HLS Playlist containing all qualities referencing sub-playlists
+        const masterPlaylistContent = `#EXTM3U
+#EXT-X-VERSION:3
+#EXT-X-STREAM-INF:BANDWIDTH=15000000,RESOLUTION=3840x2160
+output_2160p.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080
+output_1080p.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720
+output_720p.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=1000000,RESOLUTION=854x480
+output_480p.m3u8`;
+
+        const subPlaylistContent = `#EXTM3U
 #EXT-X-VERSION:3
 #EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=1280x720
 https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8`;
@@ -245,13 +317,13 @@ https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tear
           new PutObjectCommand({
             Bucket: BUCKET_TRANSCODED_VIDEOS,
             Key: masterManifestKey,
-            Body: playlistContent,
+            Body: masterPlaylistContent,
             ContentType: "application/x-mpegURL",
           })
         );
 
         // Register video asset qualities and upload sub-playlists
-        const qualities = ["480p", "720p", "1080p"];
+        const qualities = ["480p", "720p", "1080p", "2160p"];
         for (const quality of qualities) {
           const subPlaylistKey = `movies/${movieId}/output_${quality}.m3u8`;
           
@@ -259,7 +331,7 @@ https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tear
             new PutObjectCommand({
               Bucket: BUCKET_TRANSCODED_VIDEOS,
               Key: subPlaylistKey,
-              Body: playlistContent,
+              Body: subPlaylistContent,
               ContentType: "application/x-mpegURL",
             })
           );
@@ -272,18 +344,19 @@ https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tear
                 quality,
                 hlsPlaylistUrl: `https://${BUCKET_TRANSCODED_VIDEOS}.s3.amazonaws.com/${subPlaylistKey}`,
                 fileSizeBytes: 3114374, // size of real file
-                bitrateKbps: quality === "1080p" ? 5000 : quality === "720p" ? 2500 : 1000,
+                bitrateKbps: quality === "2160p" ? 15000 : quality === "1080p" ? 5000 : quality === "720p" ? 2500 : 1000,
                 createdAt: new Date().toISOString(),
               },
             })
           );
         }
 
-        // Update movie status in DynamoDB to "ready"
+        // Update movie status in DynamoDB to "ready" and add fallback poster URL
         console.log(`Updating movie status to ready in DynamoDB...`);
         const updatedMovie = {
           ...movieResult.Item,
           videoStatus: "ready",
+          posterUrl: movieResult.Item.posterUrl || "https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=400&h=600&q=80",
           updatedAt: new Date().toISOString(),
         };
 

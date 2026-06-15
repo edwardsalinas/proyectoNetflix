@@ -32,10 +32,30 @@ export const handler = async (event: any) => {
     if (status === "COMPLETE") {
       console.log(`MediaConvert job completed for movie ${movieId}. Updating status...`);
 
-      // Update movie status to ready
+      const bucketTranscoded = process.env.BUCKET_TRANSCODED_VIDEOS || "transcoded-videos";
+      const posterUrl = `https://${bucketTranscoded}.s3.amazonaws.com/movies/${movieId}/thumbnails/thumb.0000000.jpg`;
+
+      // Extract duration from EventBridge detail if available
+      let durationMinutes = movieResult.Item.durationMinutes || 120;
+      try {
+        const outputGroups = event.detail?.outputGroupDetails;
+        if (outputGroups && outputGroups.length > 0) {
+          const outputs = outputGroups[0].outputDetails;
+          if (outputs && outputs.length > 0 && outputs[0].durationInMs) {
+            durationMinutes = Math.ceil(outputs[0].durationInMs / 60000);
+          }
+        }
+      } catch (err) {
+        console.warn("Could not parse duration from MediaConvert event:", err);
+      }
+
+      // Update movie status to ready, register posterUrl and save actual duration
       const updatedMovie = {
         ...movieResult.Item,
         videoStatus: "ready",
+        posterUrl: movieResult.Item.posterUrl || posterUrl,
+        durationMinutes: durationMinutes,
+        duration: `${durationMinutes} min`,
         updatedAt: new Date().toISOString(),
       };
 
@@ -47,8 +67,7 @@ export const handler = async (event: any) => {
       );
 
       // Register video assets
-      const bucketTranscoded = process.env.BUCKET_TRANSCODED_VIDEOS || "transcoded-videos";
-      const qualities = ["480p", "720p", "1080p"];
+      const qualities = ["480p", "720p", "1080p", "2160p"];
 
       for (const quality of qualities) {
         await ddbDocClient.send(
@@ -59,7 +78,7 @@ export const handler = async (event: any) => {
               quality,
               hlsPlaylistUrl: `https://${bucketTranscoded}.s3.amazonaws.com/movies/${movieId}/output_${quality}.m3u8`,
               fileSizeBytes: 104857600, // 100MB
-              bitrateKbps: quality === "1080p" ? 5000 : quality === "720p" ? 2500 : 1000,
+              bitrateKbps: quality === "2160p" ? 15000 : quality === "1080p" ? 5000 : quality === "720p" ? 2500 : 1000,
               createdAt: new Date().toISOString(),
             },
           })

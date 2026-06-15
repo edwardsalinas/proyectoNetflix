@@ -55,12 +55,25 @@ export const handler = async (event: any) => {
           body: {
             size: maxResults,
             query: {
-              multi_match: {
-                query: q,
-                fields: ["title^3", "synopsis", "director^2"],
-                type: "best_fields",
-                fuzziness: "AUTO",
-              },
+              bool: {
+                should: [
+                  {
+                    multi_match: {
+                      query: q,
+                      fields: ["title^3", "synopsis", "director^2"],
+                      type: "best_fields",
+                      fuzziness: "AUTO",
+                    }
+                  },
+                  {
+                    multi_match: {
+                      query: q,
+                      fields: ["title^3", "synopsis", "director^2"],
+                      type: "phrase_prefix",
+                    }
+                  }
+                ]
+              }
             },
           },
         });
