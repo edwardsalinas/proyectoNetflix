@@ -24,12 +24,12 @@ La aplicación está desplegada y accesible a nivel mundial mediante la CDN de A
 
 ## Usuarios ambiente live
 Usuario super_admin
-usuario: admin@netflix-clone.com
-contraseña: Password123!
+- usuario: admin@netflix-clone.com
+- contraseña: Password123!
 
 Usuario regular
-usuario: prueba@netflix-clone.com
-contraseña: Password123!
+- usuario: prueba@netflix-clone.com
+- contraseña: Password123!
 
 
 
