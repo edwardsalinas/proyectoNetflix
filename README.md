@@ -22,6 +22,17 @@ La aplicación está desplegada y accesible a nivel mundial mediante la CDN de A
 🔗 **[https://d33whrv9c8h9sn.cloudfront.net](https://d33whrv9c8h9sn.cloudfront.net)**
 *(Nota: El registro e inicio de sesión están asegurados mediante AWS Cognito)*
 
+## Usuarios ambiente live
+Usuario super_admin
+usuario: admin@netflix-clone.com
+contraseña: Password123!
+
+Usuario regular
+usuario: prueba@netflix-clone.com
+contraseña: Password123!
+
+
+
 ---
 
 ## Project Documents
