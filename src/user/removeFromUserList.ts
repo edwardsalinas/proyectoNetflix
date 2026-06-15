@@ -19,18 +19,21 @@ export const handler = async (event: any) => {
     // Validate ownership
     validateUserOrAdmin(event, userId);
 
+    const profileId = event.queryStringParameters?.profileId;
+    const dbUserId = profileId ? `${userId}#${profileId}` : userId;
+
     // 1. Verify existence
     const getResult = await ddbDocClient.send(
       new GetCommand({
         TableName: TABLE_USER_LISTS,
-        Key: { userId, movieId },
+        Key: { userId: dbUserId, movieId },
       })
     );
 
     if (!getResult.Item) {
       const error: any = new Error(`NotFound: Movie with ID '${movieId}' not found in user list`);
       error.resourceType = "UserList";
-      error.resourceId = `${userId}#${movieId}`;
+      error.resourceId = `${dbUserId}#${movieId}`;
       throw error;
     }
 
@@ -38,7 +41,7 @@ export const handler = async (event: any) => {
     await ddbDocClient.send(
       new DeleteCommand({
         TableName: TABLE_USER_LISTS,
-        Key: { userId, movieId },
+        Key: { userId: dbUserId, movieId },
       })
     );
 

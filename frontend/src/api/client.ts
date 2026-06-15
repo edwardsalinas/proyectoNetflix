@@ -145,28 +145,278 @@ export const profileService = {
   }
 };
 
+export interface Movie {
+  movieId: string;
+  title: string;
+  description: string;
+  rating: number;
+  duration: string;
+  genre: string;
+  poster: string | null;
+}
+
+interface ApiMovie {
+  movieId?: string;
+  id?: string;
+  title?: string;
+  name?: string;
+  description?: string;
+  overview?: string;
+  summary?: string;
+  rating?: number;
+  score?: number;
+  vote_average?: number;
+  duration?: string;
+  runtime?: number;
+  length?: string;
+  genre?: string;
+  genres?: string[];
+  category?: string;
+  poster?: string | null;
+  poster_path?: string | null;
+  image?: string | null;
+  thumbnailUrl?: string;
+  bannerUrl?: string;
+  synopsis?: string;
+  durationMinutes?: number;
+  genreId?: string;
+  posterUrl?: string | null;
+  director?: string;
+  releaseYear?: number;
+  videoStatus?: 'pending' | 'transcoding' | 'ready';
+}
+
+const MOCK_MOVIES_FALLBACK: Movie[] = [
+  {
+    movieId: 'm1',
+    title: 'Stranger Things',
+    description: 'Cuando un niño desaparece, sus amigos, una madre y un jefe de policía deben enfrentarse a fuerzas terroríficas.',
+    rating: 8.7,
+    duration: '45 min',
+    genre: 'Sci-Fi / Drama',
+    poster: 'https://images.unsplash.com/photo-1618336753974-aae8e04506aa?auto=format&fit=crop&w=400&h=600&q=80',
+  },
+  {
+    movieId: 'm2',
+    title: 'The Witcher',
+    description: 'Geralt de Rivia, un cazador de monstruos mutante, viaja hacia su destino en un mundo turbulento.',
+    rating: 8.1,
+    duration: '60 min',
+    genre: 'Fantasía / Acción',
+    poster: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&h=600&q=80',
+  },
+  {
+    movieId: 'm3',
+    title: 'Cobra Kai',
+    description: 'Treinta y cuatro años después del torneo de karate de All Valley, Johnny Lawrence busca la redención.',
+    rating: 8.5,
+    duration: '30 min',
+    genre: 'Acción / Comedia',
+    poster: 'https://images.unsplash.com/photo-1555597673-b21d5c935865?auto=format&fit=crop&w=400&h=600&q=80',
+  },
+  {
+    movieId: 'm4',
+    title: 'The Crown',
+    description: 'Relato de las rivalidades personales y políticas durante el reinado de Isabel II.',
+    rating: 8.6,
+    duration: '50 min',
+    genre: 'Drama / Historia',
+    poster: 'https://images.unsplash.com/photo-1598899134739-24c46f58b6c0?auto=format&fit=crop&w=400&h=600&q=80',
+  },
+  {
+    movieId: 'm5',
+    title: 'Dark',
+    description: 'Un niño desaparece en un pequeño pueblo alemán, revelando los secretos de cuatro familias.',
+    rating: 8.8,
+    duration: '55 min',
+    genre: 'Ciencia Ficción / Thriller',
+    poster: 'https://images.unsplash.com/photo-1509248961158-c54f693fe9a8?auto=format&fit=crop&w=400&h=600&q=80',
+  },
+];
+
+const normalizeMovie = (raw: ApiMovie): Movie => ({
+  movieId: raw.movieId || raw.id || '',
+  title: raw.title || raw.name || '',
+  description: raw.description || raw.overview || raw.summary || raw.synopsis || '',
+  rating: raw.rating ?? raw.score ?? raw.vote_average ?? 0,
+  duration: raw.duration || (raw.runtime ? `${raw.runtime} min` : '') || raw.length || (raw.durationMinutes ? `${raw.durationMinutes} min` : '') || '',
+  genre: raw.genre || (raw.genres ? raw.genres.join(' / ') : '') || raw.category || raw.genreId || '',
+  poster: raw.poster ?? raw.poster_path ?? raw.image ?? raw.thumbnailUrl ?? raw.bannerUrl ?? raw.posterUrl ?? null,
+});
+
+const normalizeAdminMovie = (raw: ApiMovie): AdminMovie => ({
+  ...normalizeMovie(raw),
+  director: raw.director,
+  releaseYear: raw.releaseYear,
+  durationMinutes: raw.durationMinutes,
+  genreId: raw.genreId || raw.genre || raw.category,
+  videoStatus: raw.videoStatus || 'pending',
+  posterUrl: raw.posterUrl ?? raw.poster_path ?? raw.image ?? raw.thumbnailUrl ?? raw.bannerUrl ?? null,
+  synopsis: raw.synopsis || raw.description || raw.overview || raw.summary || '',
+});
+
+const extractMovies = (data: unknown): Movie[] => {
+  let list: ApiMovie[] = [];
+  if (Array.isArray(data)) {
+    list = data;
+  } else if (data && typeof data === 'object') {
+    const obj = data as Record<string, unknown>;
+    list = (obj.items as ApiMovie[]) || (obj.data as ApiMovie[]) || (obj.results as ApiMovie[]) || [];
+  }
+  return list.map(normalizeMovie);
+};
+
 export const movieService = {
-  getMovies: async (): Promise<any[]> => {
+  getMovies: async (): Promise<Movie[]> => {
     try {
       const response = await apiClient.get('/movies');
-      return response.data.items || response.data.movies || response.data || [];
+      return extractMovies(response.data);
     } catch (err) {
-      console.warn("Falla al cargar catálogo de películas desde API:", err);
-      return [];
+      console.warn('Falla en API de películas, usando datos de respaldo:', err);
+      return MOCK_MOVIES_FALLBACK;
     }
   },
-
-  getMovie: async (movieId: string): Promise<any> => {
+  getMovie: async (movieId: string): Promise<Movie | null> => {
     try {
       const response = await apiClient.get(`/movies/${movieId}`);
-      return response.data.movie || response.data;
+      return normalizeMovie(response.data.movie || response.data);
     } catch (err) {
-      console.warn(`Falla al cargar detalle de película ${movieId} desde API:`, err);
-      return null;
+      console.warn(`Falla al cargar detalle de película ${movieId} desde API, usando respaldo:`, err);
+      return MOCK_MOVIES_FALLBACK.find(m => m.movieId === movieId) || null;
+    }
+  },
+  searchMovies: async (query: string): Promise<Movie[]> => {
+    try {
+      const response = await apiClient.get('/movies', { params: { q: query } });
+      return extractMovies(response.data);
+    } catch (err) {
+      console.warn('Falla en API de búsqueda, usando datos de respaldo:', err);
+      const q = query.toLowerCase();
+      return MOCK_MOVIES_FALLBACK.filter(m =>
+        m.title.toLowerCase().includes(q) || m.genre.toLowerCase().includes(q)
+      );
     }
   }
 };
 
+export const streamingService = {
+  createSession: async (movieId: string, preferredQuality?: string): Promise<{ url: string }> => {
+    const response = await apiClient.post('/streaming/sessions', { movieId, preferredQuality });
+    return {
+      url: response.data.signedUrl || response.data.url
+    };
+  }
+};
+
+export const historyService = {
+  getHistory: async (userId: string, profileId: string): Promise<{ movieId: string; currentTime: number; duration: number }[]> => {
+    const localKey = `netflix_history_${userId}_${profileId}`;
+    const localData = localStorage.getItem(localKey);
+    if (localData) {
+      try {
+        return JSON.parse(localData);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    try {
+      const response = await apiClient.get(`/users/${userId}/history`, { params: { profileId } });
+      const items = response.data.items || response.data || [];
+      const mapped = items.map((item: any) => ({
+        movieId: item.movieId,
+        currentTime: item.progressSeconds ?? item.currentTime ?? 0,
+        duration: item.duration || 60
+      }));
+      localStorage.setItem(localKey, JSON.stringify(mapped));
+      return mapped;
+    } catch (err) {
+      console.warn('Error fetching history:', err);
+      return [];
+    }
+  },
+  updateProgress: async (userId: string, profileId: string, movieId: string, currentTime: number): Promise<void> => {
+    const localKey = `netflix_history_${userId}_${profileId}`;
+    let historyList: any[] = [];
+    try {
+      historyList = JSON.parse(localStorage.getItem(localKey) || '[]');
+    } catch (e) {
+      historyList = [];
+    }
+    const existingIndex = historyList.findIndex(h => h.movieId === movieId);
+    if (existingIndex > -1) {
+      historyList[existingIndex].currentTime = Math.round(currentTime);
+    } else {
+      historyList.push({
+        movieId,
+        currentTime: Math.round(currentTime),
+        duration: 148
+      });
+    }
+    localStorage.setItem(localKey, JSON.stringify(historyList));
+    try {
+      await apiClient.put(`/users/${userId}/history/${movieId}?profileId=${profileId}`, { progressSeconds: Math.round(currentTime) });
+    } catch (err) {
+      console.warn('Sync watch progress failed', err);
+    }
+  }
+};
+
+export const userListService = {
+  getUserList: async (userId: string, profileId: string): Promise<{ movieId: string; addedAt: string }[]> => {
+    const localKey = `netflix_list_${userId}_${profileId}`;
+    const localData = localStorage.getItem(localKey);
+    if (localData) {
+      try {
+        return JSON.parse(localData);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    try {
+      const response = await apiClient.get(`/users/${userId}/lists`, { params: { profileId } });
+      const items = response.data.items || response.data || [];
+      localStorage.setItem(localKey, JSON.stringify(items));
+      return items;
+    } catch (err) {
+      console.warn('Error fetching user list:', err);
+      return [];
+    }
+  },
+  addToList: async (userId: string, profileId: string, movieId: string): Promise<void> => {
+    const localKey = `netflix_list_${userId}_${profileId}`;
+    let list: any[] = [];
+    try {
+      list = JSON.parse(localStorage.getItem(localKey) || '[]');
+    } catch (e) {
+      list = [];
+    }
+    if (!list.some(item => item.movieId === movieId)) {
+      list.push({ movieId, addedAt: new Date().toISOString() });
+    }
+    localStorage.setItem(localKey, JSON.stringify(list));
+    try {
+      await apiClient.post(`/users/${userId}/lists?profileId=${profileId}`, { movieId });
+    } catch (err) {
+      console.warn('Sync list add failed', err);
+    }
+  },
+  removeFromList: async (userId: string, profileId: string, movieId: string): Promise<void> => {
+    const localKey = `netflix_list_${userId}_${profileId}`;
+    let list: any[] = [];
+    try {
+      list = JSON.parse(localStorage.getItem(localKey) || '[]');
+    } catch (e) {
+      list = [];
+    }
+    list = list.filter(item => item.movieId !== movieId);
+    localStorage.setItem(localKey, JSON.stringify(list));
+    try {
+      await apiClient.delete(`/users/${userId}/lists/${movieId}?profileId=${profileId}`);
+    } catch (err) {
+      console.warn('Sync list remove failed', err);
+    }
+  }
+};
 export const reviewService = {
   getReviews: async (movieId: string): Promise<Review[]> => {
     try {
@@ -221,4 +471,115 @@ export const reviewService = {
   deleteReview: async (movieId: string, reviewId: string): Promise<void> => {
     await apiClient.delete(`/movies/${movieId}/reviews/${reviewId}`);
   },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN SERVICE - CRUD DE PELÍCULAS
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface AdminMovie extends Movie {
+  director?: string;
+  releaseYear?: number;
+  durationMinutes?: number;
+  genreId?: string;
+  videoStatus?: 'pending' | 'transcoding' | 'ready';
+  posterUrl?: string | null;
+  synopsis?: string;
+}
+
+export interface CreateMovieInput {
+  title: string;
+  synopsis: string;
+  genreId: string;
+  director: string;
+  releaseYear: number;
+  durationMinutes: number;
+}
+
+export const adminService = {
+  getAllMovies: async (): Promise<AdminMovie[]> => {
+    try {
+      const response = await apiClient.get('/movies');
+      const data = response.data;
+      let rawList: ApiMovie[] = [];
+      if (Array.isArray(data)) {
+        rawList = data;
+      } else if (data && typeof data === 'object') {
+        const obj = data as Record<string, unknown>;
+        rawList = (obj.items as ApiMovie[]) || (obj.data as ApiMovie[]) || (obj.results as ApiMovie[]) || [];
+      }
+      return rawList.map(normalizeAdminMovie);
+    } catch (err) {
+      console.error('Error al obtener películas para admin:', err);
+      return [];
+    }
+  },
+
+  updateMovieStatus: async (movieId: string, videoStatus: 'pending' | 'transcoding' | 'ready'): Promise<void> => {
+    try {
+      await apiClient.put(`/movies/${movieId}`, { videoStatus });
+    } catch (err) {
+      console.error('Error al actualizar estado de película:', err);
+      throw err;
+    }
+  },
+
+  createMovie: async (data: CreateMovieInput): Promise<AdminMovie> => {
+    try {
+      const response = await apiClient.post('/movies', data);
+      const movie = response.data.movie || response.data;
+      return {
+        movieId: movie.movieId || movie.id,
+        title: movie.title,
+        synopsis: movie.synopsis || movie.description,
+        genreId: movie.genreId || movie.genre,
+        director: movie.director,
+        releaseYear: movie.releaseYear,
+        durationMinutes: movie.durationMinutes,
+        description: movie.synopsis || movie.description || '',
+        genre: movie.genreId || movie.genre || '',
+        rating: movie.rating || 0,
+        duration: `${movie.durationMinutes || 0} min`,
+        poster: movie.posterUrl || movie.poster || null,
+        videoStatus: movie.videoStatus || 'pending'
+      };
+    } catch (err) {
+      console.error('Error al crear película:', err);
+      throw err;
+    }
+  },
+
+  updateMovie: async (movieId: string, data: Partial<CreateMovieInput>): Promise<AdminMovie> => {
+    try {
+      const response = await apiClient.put(`/movies/${movieId}`, data);
+      const movie = response.data.movie || response.data;
+      return {
+        movieId: movie.movieId || movie.id,
+        title: movie.title,
+        synopsis: movie.synopsis || movie.description,
+        genreId: movie.genreId || movie.genre,
+        director: movie.director,
+        releaseYear: movie.releaseYear,
+        durationMinutes: movie.durationMinutes,
+        description: movie.synopsis || movie.description || '',
+        genre: movie.genreId || movie.genre || '',
+        rating: movie.rating || 0,
+        duration: `${movie.durationMinutes || 0} min`,
+        poster: movie.posterUrl || movie.poster || null,
+        videoStatus: movie.videoStatus || 'pending'
+      };
+    } catch (err) {
+      console.error('Error al actualizar película:', err);
+      throw err;
+    }
+  },
+
+  deleteMovie: async (movieId: string): Promise<void> => {
+    try {
+      await apiClient.delete(`/movies/${movieId}`);
+    } catch (err) {
+      console.error('Error al eliminar película:', err);
+      throw err;
+    }
+  }
 };
