@@ -142,7 +142,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ movie, userId, profile
                 }
                 
                 // Fallback for single level / redirect
-                return hls.levels.length === 1 ? '720p' : `Opción ${index + 1}`;
+                return hls!.levels.length === 1 ? '720p' : `Opción ${index + 1}`;
               });
               setQualities(['Auto', ...Array.from(new Set(mapped))]);
             }
